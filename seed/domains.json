@@ -1,0 +1,7 @@
+[
+  { "id": "operations", "label": "OPERATIONS", "sub": "Admin · Finance · Team",      "color": "#7B68EE", "x": 10, "y": 84, "clickupListId": null },
+  { "id": "sales",      "label": "SALES",      "sub": "Proposals · Pitches · CRM",   "color": "#10b981", "x": 28, "y": 87, "clickupListId": null },
+  { "id": "strategy",   "label": "STRATEGY",   "sub": "Growth · 500K · Positioning", "color": "#f0b429", "x": 50, "y": 88, "clickupListId": null },
+  { "id": "system",     "label": "SYSTEM",     "sub": "SOPs · AI · Tools",           "color": "#8b5cf6", "x": 72, "y": 87, "clickupListId": null },
+  { "id": "hq",         "label": "HQ",         "sub": "Vision · Founder",            "color": "#e879a0", "x": 90, "y": 84, "clickupListId": null }
+]
