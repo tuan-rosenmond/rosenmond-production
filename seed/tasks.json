@@ -1,0 +1,65 @@
+{
+  "operations": [
+    { "id": "op1",  "task": "Pay Teammembers",                       "assignee": "tuan",     "status": "OPEN",        "priority": "NORMAL",   "disciplines": [], "notes": "", "dueDate": null },
+    { "id": "op2",  "task": "Pay BVG",                               "assignee": null,        "status": "OPEN",        "priority": "NORMAL",   "disciplines": [], "notes": "", "dueDate": null },
+    { "id": "op3",  "task": "Admin: Process Letters",                "assignee": null,        "status": "OPEN",        "priority": "NORMAL",   "disciplines": [], "notes": "", "dueDate": null },
+    { "id": "op4",  "task": "Finance: Handle Client Invoices",       "assignee": "tuan",     "status": "DELEGATED",   "priority": "NORMAL",   "disciplines": [], "notes": "", "dueDate": null },
+    { "id": "op5",  "task": "Add Dev Invoices to Accounting Folder", "assignee": null,        "status": "OPEN",        "priority": "NORMAL",   "disciplines": [], "notes": "", "dueDate": null },
+    { "id": "op6",  "task": "Kristina: Email & Update Calendar",     "assignee": "kristina", "status": "OPEN",        "priority": "NORMAL",   "disciplines": [], "notes": "", "dueDate": null },
+    { "id": "op7",  "task": "Kristina: Pause Fitness Abo",           "assignee": null,        "status": "OPEN",        "priority": "NORMAL",   "disciplines": [], "notes": "", "dueDate": null },
+    { "id": "op8",  "task": "Romain: Answer Accounting Queries",     "assignee": "tuan",     "status": "IN_PROGRESS", "priority": "CRITICAL", "disciplines": [], "notes": "Romain is accountant", "dueDate": null }
+  ],
+  "sales": [
+    { "id": "sa20", "task": "Dermaflora: Pitch",                       "assignee": "tuan",  "status": "OPEN",        "priority": "HIGH",     "disciplines": [], "notes": "", "dueDate": null },
+    { "id": "sa21", "task": "Mitoxcel: Anna check-in proposal",        "assignee": "tuan",  "status": "OPEN",        "priority": "HIGH",     "disciplines": [], "notes": "", "dueDate": null },
+    { "id": "sa22", "task": "Iräye: Perf. marketing audit + contract", "assignee": "tuan",  "status": "OPEN",        "priority": "CRITICAL", "disciplines": [], "notes": "", "dueDate": null }
+  ],
+  "strategy": [
+    { "id": "st30", "task": "Create Ad Creative (Lead Gen)",    "assignee": null,   "status": "OPEN",      "priority": "CRITICAL", "disciplines": ["Design", "Marketing"], "notes": "", "dueDate": null },
+    { "id": "st31", "task": "Portfolio Refinement & Content",   "assignee": "tuan", "status": "DELEGATED", "priority": "CRITICAL", "disciplines": ["Design", "Marketing"], "notes": "", "dueDate": null }
+  ],
+  "system": [
+    { "id": "sy40", "task": "SYS-001: ClickUp Optimization",    "assignee": null,   "status": "OPEN", "priority": "HIGH", "disciplines": ["Ops"], "notes": "", "dueDate": null },
+    { "id": "sy41", "task": "Marija: Reassign task overload",   "assignee": "tuan", "status": "OPEN", "priority": "HIGH", "disciplines": ["Ops"], "notes": "", "dueDate": null }
+  ],
+  "hq": [],
+  "noouri": [
+    { "id": "no60", "task": "Fix 4 bugs — buttons + mobile",          "assignee": "bhavesh",  "status": "IN_PROGRESS", "priority": "CRITICAL", "disciplines": ["Development"],         "notes": "Beratung buchen, Finde das Passende, mobile Mehr erfahren, mobile fonts", "dueDate": null },
+    { "id": "no61", "task": "Handle 16 text changes",                 "assignee": null,        "status": "OPEN",        "priority": "HIGH",     "disciplines": ["Ops"],                "notes": "Nathalie too busy to do herself", "dueDate": null },
+    { "id": "no62", "task": "Booking pages: 4 info sections",         "assignee": "marija",   "status": "IN_PROGRESS", "priority": "HIGH",     "disciplines": ["Development","Design"],"notes": "Info section above widget on each booking page", "dueDate": null },
+    { "id": "no63", "task": "Social media posts review",              "assignee": "kristina", "status": "IN_PROGRESS", "priority": "HIGH",     "disciplines": ["Design","Marketing"], "notes": "", "dueDate": null },
+    { "id": "no64", "task": "Business card design → Kolory.co specs", "assignee": "kristina", "status": "OPEN",        "priority": "NORMAL",   "disciplines": ["Design"],             "notes": "Printer: Kolory.co (Poland)", "dueDate": null },
+    { "id": "no65", "task": "Services page call → 500 CHF approval",  "assignee": "tuan",     "status": "OPEN",        "priority": "CRITICAL", "disciplines": ["Ops"],                "notes": "Get written approval before any structural changes", "dueDate": null },
+    { "id": "no66", "task": "Clarify Brevo data privacy",             "assignee": "tuan",     "status": "OPEN",        "priority": "NORMAL",   "disciplines": ["Ops"],                "notes": "About Brevo email tool, not Webflow", "dueDate": null },
+    { "id": "no67", "task": "3 Videos",                               "assignee": "kristina", "status": "PARKED",      "priority": "NORMAL",   "disciplines": ["Content"],            "notes": "Parked until current workload clears", "dueDate": null },
+    { "id": "no68", "task": "Fix launch date",                        "assignee": "tuan",     "status": "OPEN",        "priority": "HIGH",     "disciplines": ["Ops"],                "notes": "", "dueDate": null }
+  ],
+  "praxis": [
+    { "id": "px70", "task": "Content: Upload SEO Articles",   "assignee": "tuan", "status": "WAITING", "priority": "NORMAL", "disciplines": ["Content","Marketing"], "notes": "", "dueDate": null },
+    { "id": "px71", "task": "Clarify 10k hourly invoice",     "assignee": "tuan", "status": "OPEN",    "priority": "HIGH",   "disciplines": ["Ops"],                "notes": "", "dueDate": null },
+    { "id": "px72", "task": "Propose fixed retainer shift",   "assignee": "tuan", "status": "OPEN",    "priority": "HIGH",   "disciplines": ["Ops"],                "notes": "", "dueDate": null }
+  ],
+  "drnoel": [
+    { "id": "dn80", "task": "Final Delivery", "assignee": "tuan", "status": "DELEGATED", "priority": "HIGH", "disciplines": ["Design","Content"], "notes": "", "dueDate": null }
+  ],
+  "drliv": [
+    { "id": "dl90", "task": "Documentation", "assignee": null, "status": "IN_PROGRESS", "priority": "CRITICAL", "disciplines": ["Content","Ops"], "notes": "", "dueDate": null }
+  ],
+  "iraye": [
+    { "id": "ir100", "task": "Finalize & Send Content Proposal",  "assignee": "tuan", "status": "DELEGATED", "priority": "CRITICAL", "disciplines": ["Content","Marketing"], "notes": "", "dueDate": null },
+    { "id": "ir101", "task": "Perf. marketing audit + contract",  "assignee": "tuan", "status": "OPEN",      "priority": "CRITICAL", "disciplines": ["Marketing"],           "notes": "", "dueDate": null }
+  ],
+  "formetta": [
+    { "id": "fm110", "task": "Proposal: Science Page",              "assignee": "tuan", "status": "DELEGATED", "priority": "HIGH", "disciplines": ["Design","Content"],      "notes": "", "dueDate": null },
+    { "id": "fm111", "task": "Proposal: Quiz Estimate (Kerstin)",   "assignee": "tuan", "status": "DELEGATED", "priority": "HIGH", "disciplines": ["Development","Design"],  "notes": "", "dueDate": null },
+    { "id": "fm112", "task": "Ecom Images",                         "assignee": null,   "status": "DELEGATED", "priority": "HIGH", "disciplines": ["Design"],                "notes": "", "dueDate": null }
+  ],
+  "hsg": [
+    { "id": "hs120", "task": "Rapid Mail Set Up", "assignee": "tuan", "status": "DELEGATED", "priority": "HIGH", "disciplines": ["Development","Ops"], "notes": "Shopify OAuth integration issue", "dueDate": null }
+  ],
+  "pureclinic": [
+    { "id": "pc130", "task": "Develop Expace Pro",       "assignee": null,   "status": "OPEN",      "priority": "CRITICAL", "disciplines": ["Development"],        "notes": "", "dueDate": null },
+    { "id": "pc131", "task": "Scope Creep Resolution",   "assignee": null,   "status": "OPEN",      "priority": "CRITICAL", "disciplines": ["Ops"],                "notes": "", "dueDate": null },
+    { "id": "pc132", "task": "Tech: Email Automation",   "assignee": null,   "status": "DELEGATED", "priority": "NORMAL",   "disciplines": ["Development","Ops"], "notes": "", "dueDate": null }
+  ]
+}

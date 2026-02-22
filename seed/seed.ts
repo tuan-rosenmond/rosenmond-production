@@ -46,6 +46,32 @@ async function main(): Promise<void> {
   await seedCollection("domains", domains);
   await seedCollection("channelMap", channelMapWithIds);
 
+  // Seed tasks into tasksMirror (prototype data until ClickUp is connected)
+  const tasksByProject = loadJson<Record<string, Array<Doc & { task: string; assignee: string | null; status: string; priority: string; disciplines: string[]; notes: string; dueDate: string | null }>>>("tasks.json");
+  let taskCount = 0;
+  for (const [projectId, tasks] of Object.entries(tasksByProject)) {
+    if (!tasks.length) continue;
+    const batch = db.batch();
+    for (const t of tasks) {
+      const { id, ...data } = t;
+      batch.set(db.collection("tasksMirror").doc(id), {
+        ...data,
+        projectId,
+        clickupTaskId: null,
+        hoursLogged: 0,
+        clientBilling: null,
+        teamBilling: null,
+        billable: false,
+        project: null,
+        parentTaskId: null,
+        lastSyncedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      taskCount++;
+    }
+    await batch.commit();
+  }
+  console.log(`  ✓ tasksMirror: ${taskCount} tasks across ${Object.keys(tasksByProject).filter(k => (tasksByProject[k] as unknown[]).length > 0).length} projects`);
+
   // Initial activity log entry
   await db.collection("activityLog").add({
     ts: admin.firestore.FieldValue.serverTimestamp(),
