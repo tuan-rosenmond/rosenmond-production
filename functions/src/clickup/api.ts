@@ -1,7 +1,8 @@
-// ClickUp API client — fully stubbed until ClickUp Business plan API access is confirmed.
-// All methods log what they would do via logActivity().
+// ClickUp API client — Real implementation using ClickUp API v2.
+// Env vars: CLICKUP_API_TOKEN, CLICKUP_TEAM_ID, CLICKUP_PROJECTS_SPACE_ID
 
 import { logActivity } from "../shared/logger";
+import { collections } from "../shared/firestore";
 
 export interface ClickUpTask {
   id: string;
@@ -22,104 +23,270 @@ export interface ClickUpTask {
   url: string;
 }
 
-function mockTask(overrides: Partial<ClickUpTask> = {}): ClickUpTask {
-  return {
-    id: "stub_" + Math.random().toString(36).slice(2, 8),
-    name: "Stubbed Task",
-    description: "",
-    status: { status: "in progress" },
-    priority: { priority: "3" },
-    assignees: [],
-    tags: [],
-    due_date: null,
-    date_created: new Date().toISOString(),
-    date_updated: new Date().toISOString(),
-    time_spent: 0,
-    list: { id: "list_stub", name: "Active Work" },
-    folder: { id: "folder_stub", name: "Client" },
-    space: { id: "space_stub" },
-    custom_fields: [],
-    url: "https://app.clickup.com/t/stub",
-    ...overrides,
-  };
+// --- Config helpers ---
+
+const BASE = "https://api.clickup.com/api/v2";
+
+function env(key: string): string {
+  const v = process.env[key];
+  if (!v) throw new Error(`Missing env: ${key}`);
+  return v;
 }
 
+function hdrs(): Record<string, string> {
+  return { Authorization: env("CLICKUP_API_TOKEN"), "Content-Type": "application/json" };
+}
+
+// --- HTTP helpers ---
+
+async function apiGet<T = unknown>(path: string): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, { headers: hdrs() });
+  if (!res.ok) throw new Error(`ClickUp GET ${path} → ${res.status}: ${await res.text()}`);
+  return res.json() as Promise<T>;
+}
+
+async function apiPut<T = unknown>(path: string, body: Record<string, unknown>): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, { method: "PUT", headers: hdrs(), body: JSON.stringify(body) });
+  if (!res.ok) throw new Error(`ClickUp PUT ${path} → ${res.status}: ${await res.text()}`);
+  return res.json() as Promise<T>;
+}
+
+async function apiPost<T = unknown>(path: string, body: Record<string, unknown>): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, { method: "POST", headers: hdrs(), body: JSON.stringify(body) });
+  if (!res.ok) throw new Error(`ClickUp POST ${path} → ${res.status}: ${await res.text()}`);
+  return res.json() as Promise<T>;
+}
+
+// --- Priority mapping (Warboard → ClickUp) ---
+// ClickUp: 1=Urgent, 2=High, 3=Normal, 4=Low
+
+const WARBOARD_PRI_TO_CLICKUP: Record<string, number> = {
+  FOCUS: 1,
+  CRITICAL: 1,
+  HIGH: 2,
+  NORMAL: 3,
+};
+
+// --- Team member cache (name → ClickUp user ID) ---
+
+let memberCache: Map<string, number> | null = null;
+
+async function getMembers(): Promise<Map<string, number>> {
+  if (memberCache) return memberCache;
+  const data = await apiGet<{ team: { members: Array<{ user: { id: number; username: string } }> } }>(
+    `/team/${env("CLICKUP_TEAM_ID")}`,
+  );
+  memberCache = new Map();
+  for (const m of data.team.members) {
+    const uname = m.user.username.toLowerCase();
+    memberCache.set(uname, m.user.id);
+    // Also index by first segment of username (e.g. "bhavesh.p" → "bhavesh")
+    const first = uname.split(/[._\-@]/)[0];
+    if (first && !memberCache.has(first)) memberCache.set(first, m.user.id);
+  }
+  return memberCache;
+}
+
+async function resolveAssigneeId(name: string): Promise<number | null> {
+  const members = await getMembers();
+  return members.get(name.toLowerCase()) ?? null;
+}
+
+// --- List resolution cache (projectId → ClickUp list ID) ---
+
+let listCache: Map<string, string> | null = null;
+
+async function buildListCache(): Promise<Map<string, string>> {
+  if (listCache) return listCache;
+  listCache = new Map();
+
+  const spaceId = env("CLICKUP_PROJECTS_SPACE_ID");
+  const foldersRes = await apiGet<{ folders: Array<{ id: string; name: string; lists: Array<{ id: string; name: string }> }> }>(
+    `/space/${spaceId}/folder`,
+  );
+
+  for (const folder of foldersRes.folders || []) {
+    // Prefer "Active Work" list, fall back to first list
+    const activeList = folder.lists.find((l: { name: string }) => l.name.toLowerCase().includes("active")) || folder.lists[0];
+    if (activeList) {
+      listCache.set(folder.name.toLowerCase(), activeList.id);
+      listCache.set(folder.id, activeList.id);
+    }
+  }
+
+  return listCache;
+}
+
+async function resolveListId(projectId: string): Promise<string | null> {
+  // Already a numeric ClickUp list ID
+  if (/^\d+$/.test(projectId)) return projectId;
+
+  // Check Firestore client for clickupFolderId
+  const clientDoc = await collections.clients().doc(projectId).get();
+  if (clientDoc.exists) {
+    const data = clientDoc.data();
+    if (data?.clickupFolderId) {
+      const cache = await buildListCache();
+      return cache.get(data.clickupFolderId) ?? null;
+    }
+    // Try matching by client label
+    if (data?.label) {
+      const cache = await buildListCache();
+      return cache.get((data.label as string).toLowerCase()) ?? null;
+    }
+  }
+
+  // Try matching projectId directly against folder names
+  const cache = await buildListCache();
+  return cache.get(projectId.toLowerCase()) ?? null;
+}
+
+// --- Public API ---
+
 export async function getTask(taskId: string): Promise<ClickUpTask> {
-  console.log(`[clickup-stub] getTask(${taskId})`);
-  return mockTask({ id: taskId });
+  return apiGet<ClickUpTask>(`/task/${taskId}`);
 }
 
 export async function getTasksFromList(listId: string): Promise<ClickUpTask[]> {
-  console.log(`[clickup-stub] getTasksFromList(${listId})`);
-  return [
-    mockTask({ id: "t001", name: "Design homepage", status: { status: "in progress" } }),
-    mockTask({ id: "t002", name: "Build contact form", status: { status: "new request" } }),
-  ];
+  const all: ClickUpTask[] = [];
+  let page = 0;
+  let hasMore = true;
+  while (hasMore) {
+    const res = await apiGet<{ tasks: ClickUpTask[] }>(
+      `/list/${listId}/task?include_closed=true&page=${page}`,
+    );
+    const tasks = res.tasks || [];
+    all.push(...tasks);
+    hasMore = tasks.length === 100; // ClickUp default page size
+    page++;
+  }
+  return all;
 }
 
 export async function getAllTasks(): Promise<ClickUpTask[]> {
-  console.log("[clickup-stub] getAllTasks()");
-  return [
-    mockTask({ id: "t010", name: "Fix 4 bugs — buttons + mobile", folder: { id: "f1", name: "Noouri" }, status: { status: "in progress" }, priority: { priority: "1" }, assignees: [{ username: "bhavesh", id: 1 }] }),
-    mockTask({ id: "t011", name: "Booking pages: 4 info sections", folder: { id: "f1", name: "Noouri" }, status: { status: "in progress" }, priority: { priority: "2" }, assignees: [{ username: "marija", id: 2 }] }),
-    mockTask({ id: "t020", name: "Finalize & Send Content Proposal", folder: { id: "f2", name: "Iräye" }, status: { status: "in progress" }, priority: { priority: "1" }, assignees: [{ username: "tuan", id: 3 }] }),
-    mockTask({ id: "t021", name: "Perf. marketing audit + contract", folder: { id: "f2", name: "Iräye" }, status: { status: "new request" }, priority: { priority: "1" }, assignees: [{ username: "tuan", id: 3 }] }),
-    mockTask({ id: "t030", name: "Develop Expace Pro", folder: { id: "f3", name: "Pure Clinic" }, status: { status: "new request" }, priority: { priority: "1" }, assignees: [] }),
-    mockTask({ id: "t031", name: "Scope Creep Resolution", folder: { id: "f3", name: "Pure Clinic" }, status: { status: "new request" }, priority: { priority: "1" }, assignees: [] }),
-    mockTask({ id: "t040", name: "Rapid Mail Set Up", folder: { id: "f4", name: "HSG" }, status: { status: "in progress" }, priority: { priority: "2" }, assignees: [{ username: "tuan", id: 3 }] }),
-    mockTask({ id: "t050", name: "Documentation", folder: { id: "f5", name: "Dr. Liv" }, status: { status: "in progress" }, priority: { priority: "1" }, assignees: [] }),
-    mockTask({ id: "t060", name: "Create Ad Creative (Lead Gen)", folder: { id: "f6", name: "Strategy" }, status: { status: "new request" }, priority: { priority: "1" }, assignees: [] }),
-    mockTask({ id: "t061", name: "Portfolio Refinement & Content", folder: { id: "f6", name: "Strategy" }, status: { status: "in progress" }, priority: { priority: "1" }, assignees: [{ username: "tuan", id: 3 }] }),
-  ];
+  const spaceId = env("CLICKUP_PROJECTS_SPACE_ID");
+
+  // Get all folders (response includes nested lists)
+  const foldersRes = await apiGet<{ folders: Array<{ id: string; name: string; lists: Array<{ id: string; name: string }> }> }>(
+    `/space/${spaceId}/folder`,
+  );
+
+  // Get folderless lists
+  const listsRes = await apiGet<{ lists: Array<{ id: string; name: string }> }>(
+    `/space/${spaceId}/list`,
+  );
+
+  // Collect all list IDs
+  const allListIds: string[] = [];
+  for (const folder of foldersRes.folders || []) {
+    for (const list of folder.lists || []) {
+      allListIds.push(list.id);
+    }
+  }
+  for (const list of listsRes.lists || []) {
+    allListIds.push(list.id);
+  }
+
+  // Fetch tasks from all lists
+  const allTasks: ClickUpTask[] = [];
+  for (const listId of allListIds) {
+    const tasks = await getTasksFromList(listId);
+    allTasks.push(...tasks);
+  }
+
+  console.log(`[clickup] getAllTasks: ${allTasks.length} tasks from ${allListIds.length} lists`);
+  return allTasks;
 }
 
 export async function updateTaskStatus(taskId: string, status: string): Promise<void> {
-  console.log(`[clickup-stub] updateTaskStatus(${taskId}, ${status})`);
+  // ClickUp expects lowercase status names
+  await apiPut(`/task/${taskId}`, { status: status.toLowerCase() });
   await logActivity({
     action: "CLICKUP",
-    detail: `[STUB] Would update task ${taskId} status to "${status}"`,
+    detail: `Updated task ${taskId} status → "${status}"`,
     taskId,
     source: "system",
   });
 }
 
 export async function updateTaskPriority(taskId: string, priority: string): Promise<void> {
-  console.log(`[clickup-stub] updateTaskPriority(${taskId}, ${priority})`);
+  const clickupPri = WARBOARD_PRI_TO_CLICKUP[priority.toUpperCase()] ?? 3;
+  await apiPut(`/task/${taskId}`, { priority: clickupPri });
   await logActivity({
     action: "CLICKUP",
-    detail: `[STUB] Would update task ${taskId} priority to "${priority}"`,
+    detail: `Updated task ${taskId} priority → "${priority}" (ClickUp: ${clickupPri})`,
     taskId,
     source: "system",
   });
 }
 
 export async function updateTaskAssignee(taskId: string, assignee: string): Promise<void> {
-  console.log(`[clickup-stub] updateTaskAssignee(${taskId}, ${assignee})`);
+  const userId = await resolveAssigneeId(assignee);
+  if (!userId) {
+    console.warn(`[clickup] Could not resolve assignee "${assignee}" to ClickUp user ID`);
+    await logActivity({
+      action: "CLICKUP",
+      detail: `Could not resolve assignee "${assignee}" for task ${taskId} — skipped ClickUp update`,
+      taskId,
+      source: "system",
+    });
+    return;
+  }
+
+  // Get current assignees so we can swap
+  const task = await getTask(taskId);
+  const currentIds = task.assignees.map((a: { id: number }) => a.id);
+
+  await apiPut(`/task/${taskId}`, {
+    assignees: { add: [userId], rem: currentIds.filter((id: number) => id !== userId) },
+  });
+
   await logActivity({
     action: "CLICKUP",
-    detail: `[STUB] Would reassign task ${taskId} to "${assignee}"`,
+    detail: `Reassigned task ${taskId} → "${assignee}" (uid: ${userId})`,
     taskId,
     source: "system",
   });
 }
 
-export async function createTask(listId: string, task: { name: string; status?: string; priority?: string; assignees?: string[] }): Promise<string> {
-  const id = "new_" + Date.now();
-  console.log(`[clickup-stub] createTask in list ${listId}: "${task.name}"`);
+export async function createTask(
+  listId: string,
+  task: { name: string; status?: string; priority?: string; assignees?: string[] },
+): Promise<string> {
+  // Resolve list ID (might be a warboard projectId like "noouri")
+  const resolvedListId = (await resolveListId(listId)) || listId;
+
+  const body: Record<string, unknown> = { name: task.name };
+  if (task.status) body.status = task.status.toLowerCase();
+  if (task.priority) body.priority = WARBOARD_PRI_TO_CLICKUP[task.priority.toUpperCase()] ?? 3;
+
+  // Resolve assignee names → ClickUp user IDs
+  if (task.assignees?.length) {
+    const ids: number[] = [];
+    for (const name of task.assignees) {
+      const id = await resolveAssigneeId(name);
+      if (id) ids.push(id);
+    }
+    if (ids.length) body.assignees = ids;
+  }
+
+  const result = await apiPost<{ id: string }>(`/list/${resolvedListId}/task`, body);
+
   await logActivity({
     action: "CLICKUP",
-    detail: `[STUB] Would create task "${task.name}" in list ${listId}`,
-    taskId: id,
+    detail: `Created task "${task.name}" in list ${resolvedListId} → ${result.id}`,
+    taskId: result.id,
     source: "system",
   });
-  return id;
+
+  return result.id;
 }
 
 export async function addTaskComment(taskId: string, comment: string): Promise<void> {
-  console.log(`[clickup-stub] addTaskComment(${taskId}): ${comment.slice(0, 80)}...`);
+  await apiPost(`/task/${taskId}/comment`, { comment_text: comment });
   await logActivity({
     action: "CLICKUP",
-    detail: `[STUB] Would post audit comment on task ${taskId}`,
+    detail: `Posted audit comment on task ${taskId}`,
     taskId,
     source: "system",
   });
