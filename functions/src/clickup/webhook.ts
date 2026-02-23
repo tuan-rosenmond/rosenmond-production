@@ -1,13 +1,26 @@
+import * as crypto from "crypto";
 import { onRequest } from "firebase-functions/v2/https";
 import { collections, serverTimestamp } from "../shared/firestore";
 import { logActivity } from "../shared/logger";
 import { CLICKUP_TO_WARBOARD } from "../shared/constants";
+import { syncToClientBoard } from "./clientboard";
+import { moveTaskToList } from "./api";
 
 interface WebhookPayload {
   event: string;
   task_id: string;
   history_items?: Array<{ field: string; before: unknown; after: unknown }>;
   [key: string]: unknown;
+}
+
+function verifyWebhookSignature(secret: string, signature: string | undefined, body: string): boolean {
+  if (!signature) return false;
+  const computed = crypto.createHmac("sha256", secret).update(body).digest("hex");
+  try {
+    return crypto.timingSafeEqual(Buffer.from(computed), Buffer.from(signature));
+  } catch {
+    return false;
+  }
 }
 
 export const clickupWebhook = onRequest(
@@ -24,8 +37,21 @@ export const clickupWebhook = onRequest(
       return;
     }
 
-    // TODO: Verify webhook signature using CLICKUP_WEBHOOK_SECRET
-    // const signature = req.headers["x-signature"];
+    // HMAC-SHA256 signature verification
+    const webhookSecret = process.env.CLICKUP_WEBHOOK_SECRET;
+    if (webhookSecret) {
+      const rawBody = typeof req.body === "string" ? req.body : JSON.stringify(req.body);
+      const signature = req.headers["x-signature"] as string | undefined;
+      if (!verifyWebhookSignature(webhookSecret, signature, rawBody)) {
+        await logActivity({
+          action: "CLICKUP",
+          detail: "Webhook rejected — invalid HMAC signature",
+          source: "clickup-webhook",
+        });
+        res.status(401).json({ error: "Invalid signature" });
+        return;
+      }
+    }
 
     const payload = req.body as WebhookPayload;
     const { event, task_id } = payload;
@@ -80,8 +106,30 @@ export const clickupWebhook = onRequest(
               source: "clickup-webhook",
             });
 
-            // TODO: Trigger Client Board sync when status changes
-            // TODO: Trigger Backlog → Active Work move when status = Planning
+            // Trigger Client Board sync
+            const taskDoc = await collections.tasksMirror().doc(task_id).get();
+            const folderName = (taskDoc.data()?.clickupFolderName as string) || "";
+            await syncToClientBoard(task_id, warboardStatus as any, folderName);
+
+            // Move from Backlog to Active Work when status = "planning"
+            if (newClickUpStatus === "planning") {
+              const taskData = taskDoc.data();
+              const folderId = taskData?.clickupFolderId as string;
+              if (folderId) {
+                try {
+                  await moveTaskToList(task_id, folderId, "active");
+                  await logActivity({
+                    action: "CLICKUP",
+                    detail: `Task ${task_id} moved to Active Work list (status: planning)`,
+                    taskId: task_id,
+                    source: "clickup-webhook",
+                  });
+                } catch (moveErr) {
+                  // Non-critical — log and continue
+                  console.warn(`Failed to move task ${task_id} to Active Work:`, moveErr);
+                }
+              }
+            }
           }
           break;
         }
@@ -96,11 +144,10 @@ export const clickupWebhook = onRequest(
         }
 
         case "taskTimeTracked": {
-          // Update hours on mirror — flag if hourly task with 0h will be handled in Step 4
           const timeData = payload.history_items?.find(h => h.field === "time_spent");
           if (timeData) {
             await collections.tasksMirror().doc(task_id).set({
-              hoursLogged: Number(timeData.after) / 3600000, // ms to hours
+              hoursLogged: Number(timeData.after) / 3600000,
               lastWebhookEvent: event,
               lastSyncedAt: serverTimestamp(),
             }, { merge: true });
@@ -109,7 +156,6 @@ export const clickupWebhook = onRequest(
         }
 
         case "taskDeleted": {
-          // Spec says never delete — but if ClickUp sends this, mark as archived
           await collections.tasksMirror().doc(task_id).set({
             archived: true,
             lastWebhookEvent: event,

@@ -1,3 +1,347 @@
 // Slack interactive actions handler — Step 3
-// Button clicks from #ai-ops: approve_task, reject_suggestion, edit_before_create, etc.
-export {};
+// Button clicks from #ai-ops: approve_task, reject_suggestion, edit_before_create
+
+import { onRequest } from "firebase-functions/v2/https";
+import { verifySlackSignature, getSlackClient } from "./client";
+import { collections, serverTimestamp } from "../shared/firestore";
+import { logActivity } from "../shared/logger";
+import { createTask, addTaskComment } from "../clickup/api";
+
+export const slackActions = onRequest(
+  { cors: false, region: "europe-west1" },
+  async (req, res) => {
+    if (req.method !== "POST") {
+      res.status(405).send("Method not allowed");
+      return;
+    }
+
+    // Slack sends interactive payloads as URL-encoded `payload` field
+    const rawPayload = req.body.payload;
+    if (!rawPayload) {
+      res.status(400).json({ error: "Missing payload" });
+      return;
+    }
+
+    const payload = JSON.parse(rawPayload);
+
+    // Verify Slack signature
+    const signingSecret = process.env.SLACK_SIGNING_SECRET;
+    if (signingSecret) {
+      const rawBody = typeof req.body === "string" ? req.body : `payload=${encodeURIComponent(rawPayload)}`;
+      const valid = verifySlackSignature(
+        signingSecret,
+        req.headers["x-slack-signature"] as string,
+        req.headers["x-slack-request-timestamp"] as string,
+        rawBody,
+      );
+      if (!valid) {
+        res.status(401).json({ error: "Invalid signature" });
+        return;
+      }
+    }
+
+    // Handle view_submission (from edit modal)
+    if (payload.type === "view_submission") {
+      res.status(200).json({ response_action: "clear" });
+      await handleViewSubmission(payload);
+      return;
+    }
+
+    // Handle block_actions (button clicks)
+    if (payload.type === "block_actions") {
+      res.status(200).send();
+      await handleBlockActions(payload);
+      return;
+    }
+
+    res.status(200).send();
+  },
+);
+
+async function handleBlockActions(payload: Record<string, unknown>): Promise<void> {
+  const actions = payload.actions as Array<{ action_id: string; value: string }>;
+  if (!actions?.length) return;
+
+  const action = actions[0];
+  const suggestionId = action.value;
+
+  switch (action.action_id) {
+    case "approve_task":
+      await approveTask(suggestionId, payload);
+      break;
+    case "reject_suggestion":
+      await rejectSuggestion(suggestionId, payload);
+      break;
+    case "edit_before_create":
+      await openEditModal(suggestionId, payload);
+      break;
+  }
+}
+
+async function approveTask(
+  suggestionId: string,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  const slack = getSlackClient();
+
+  try {
+    // Load suggestion
+    const suggDoc = await collections.pendingSuggestions().doc(suggestionId).get();
+    if (!suggDoc.exists) return;
+    const sugg = suggDoc.data()!;
+
+    const taskTitle = (sugg.taskTitle as string) || (sugg.message as string) || "Untitled task";
+    const project = (sugg.taskProject as string) || "operations";
+    const priority = (sugg.taskPriority as string) || "normal";
+
+    // Create in ClickUp
+    const clickupTaskId = await createTask(project, {
+      name: taskTitle,
+      status: "new request",
+      priority: priority.toUpperCase(),
+    });
+
+    // Mirror to Firestore
+    await collections.tasksMirror().doc(clickupTaskId).set({
+      projectId: project,
+      task: taskTitle,
+      assignee: null,
+      status: "OPEN",
+      priority: priority.toUpperCase(),
+      disciplines: (sugg.taskDisciplines as string[]) || [],
+      notes: `Created from Slack: "${(sugg.message as string || "").slice(0, 200)}"`,
+      dueDate: null,
+      hoursLogged: 0,
+      clientBilling: null,
+      teamBilling: null,
+      billable: false,
+      clickupTaskId,
+      lastSyncedAt: serverTimestamp(),
+    }, { merge: true });
+
+    // Post audit comment on ClickUp task
+    await addTaskComment(
+      clickupTaskId,
+      `[Warboard] Task created from Slack message.\nOriginal: "${(sugg.message as string || "").slice(0, 300)}"`,
+    );
+
+    // Update suggestion status
+    await collections.pendingSuggestions().doc(suggestionId).update({
+      status: "approved",
+      clickupTaskId,
+      resolvedAt: serverTimestamp(),
+    });
+
+    // Update the #ai-ops message
+    const message = payload.message as Record<string, unknown> | undefined;
+    const channel = (payload.channel as Record<string, string>)?.id;
+    const messageTs = message?.ts as string;
+
+    if (channel && messageTs) {
+      await slack.chat.update({
+        channel,
+        ts: messageTs,
+        text: `Task created: ${taskTitle}`,
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `:white_check_mark: *Task Created*\n*${taskTitle}*\nProject: ${project} | ClickUp: ${clickupTaskId}`,
+            },
+          },
+        ],
+      });
+    }
+
+    await logActivity({
+      action: "CREATE",
+      detail: `Task "${taskTitle}" created from Slack → ClickUp ${clickupTaskId}`,
+      projectId: project,
+      taskId: clickupTaskId,
+      source: "slack",
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    await logActivity({
+      action: "SLACK",
+      detail: `approve_task error: ${msg}`,
+      source: "slack",
+    });
+  }
+}
+
+async function rejectSuggestion(
+  suggestionId: string,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  const slack = getSlackClient();
+
+  await collections.pendingSuggestions().doc(suggestionId).update({
+    status: "rejected",
+    resolvedAt: serverTimestamp(),
+  });
+
+  // Update the #ai-ops message
+  const message = payload.message as Record<string, unknown> | undefined;
+  const channel = (payload.channel as Record<string, string>)?.id;
+  const messageTs = message?.ts as string;
+
+  if (channel && messageTs) {
+    await slack.chat.update({
+      channel,
+      ts: messageTs,
+      text: "Suggestion dismissed",
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: ":x: *Suggestion dismissed*",
+          },
+        },
+      ],
+    });
+  }
+
+  await logActivity({
+    action: "SLACK",
+    detail: `Suggestion ${suggestionId} dismissed`,
+    source: "slack",
+  });
+}
+
+async function openEditModal(
+  suggestionId: string,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  const slack = getSlackClient();
+  const triggerId = payload.trigger_id as string;
+  if (!triggerId) return;
+
+  const suggDoc = await collections.pendingSuggestions().doc(suggestionId).get();
+  if (!suggDoc.exists) return;
+  const sugg = suggDoc.data()!;
+
+  await slack.views.open({
+    trigger_id: triggerId,
+    view: {
+      type: "modal",
+      callback_id: "edit_task_modal",
+      private_metadata: suggestionId,
+      title: { type: "plain_text", text: "Edit Task" },
+      submit: { type: "plain_text", text: "Create Task" },
+      blocks: [
+        {
+          type: "input",
+          block_id: "task_title",
+          label: { type: "plain_text", text: "Task Title" },
+          element: {
+            type: "plain_text_input",
+            action_id: "title_input",
+            initial_value: (sugg.taskTitle as string) || (sugg.message as string) || "",
+          },
+        },
+        {
+          type: "input",
+          block_id: "task_project",
+          label: { type: "plain_text", text: "Project" },
+          element: {
+            type: "plain_text_input",
+            action_id: "project_input",
+            initial_value: (sugg.taskProject as string) || "",
+          },
+        },
+        {
+          type: "input",
+          block_id: "task_priority",
+          label: { type: "plain_text", text: "Priority" },
+          element: {
+            type: "static_select",
+            action_id: "priority_input",
+            initial_option: {
+              text: { type: "plain_text", text: ((sugg.taskPriority as string) || "normal").toUpperCase() },
+              value: ((sugg.taskPriority as string) || "normal").toUpperCase(),
+            },
+            options: [
+              { text: { type: "plain_text", text: "FOCUS" }, value: "FOCUS" },
+              { text: { type: "plain_text", text: "CRITICAL" }, value: "CRITICAL" },
+              { text: { type: "plain_text", text: "HIGH" }, value: "HIGH" },
+              { text: { type: "plain_text", text: "NORMAL" }, value: "NORMAL" },
+            ],
+          },
+        },
+      ],
+    },
+  });
+}
+
+async function handleViewSubmission(payload: Record<string, unknown>): Promise<void> {
+  const view = payload.view as Record<string, unknown>;
+  const suggestionId = view.private_metadata as string;
+  const values = view.state as Record<string, Record<string, Record<string, Record<string, unknown>>>>;
+
+  const title = (values?.values?.task_title?.title_input?.value as string) || "Untitled";
+  const project = (values?.values?.task_project?.project_input?.value as string) || "operations";
+  const priority = (values?.values?.task_priority?.priority_input as Record<string, unknown>)?.selected_option as Record<string, string> | undefined;
+  const priorityValue = priority?.value || "NORMAL";
+
+  // Create the task with edited fields
+  const clickupTaskId = await createTask(project, {
+    name: title,
+    status: "new request",
+    priority: priorityValue,
+  });
+
+  // Mirror to Firestore
+  await collections.tasksMirror().doc(clickupTaskId).set({
+    projectId: project,
+    task: title,
+    assignee: null,
+    status: "OPEN",
+    priority: priorityValue,
+    disciplines: [],
+    notes: "",
+    dueDate: null,
+    hoursLogged: 0,
+    clickupTaskId,
+    lastSyncedAt: serverTimestamp(),
+  }, { merge: true });
+
+  // Update suggestion
+  if (suggestionId) {
+    await collections.pendingSuggestions().doc(suggestionId).update({
+      status: "approved_edited",
+      clickupTaskId,
+      editedTitle: title,
+      editedProject: project,
+      editedPriority: priorityValue,
+      resolvedAt: serverTimestamp(),
+    });
+  }
+
+  // Post confirmation to #ai-ops
+  const slack = getSlackClient();
+  const { AI_OPS_CHANNEL: getAiOps } = await import("./client");
+  await slack.chat.postMessage({
+    channel: getAiOps(),
+    text: `Task created (edited): ${title}`,
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `:white_check_mark: *Task Created (Edited)*\n*${title}*\nProject: ${project} | Priority: ${priorityValue} | ClickUp: ${clickupTaskId}`,
+        },
+      },
+    ],
+  });
+
+  await logActivity({
+    action: "CREATE",
+    detail: `Task "${title}" created (edited) from Slack → ClickUp ${clickupTaskId}`,
+    projectId: project,
+    taskId: clickupTaskId,
+    source: "slack",
+  });
+}

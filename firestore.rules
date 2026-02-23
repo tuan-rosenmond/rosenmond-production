@@ -1,8 +1,55 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Locked down — Admin SDK bypasses rules
-    // Frontend auth rules will be added in Step 2
+
+    // Only the allowed Warboard user (Cloud Functions use Admin SDK, bypass rules)
+    function isAllowedUser() {
+      return request.auth != null
+        && request.auth.token.email == 'tuan.rosenmond@gmail.com'
+        && request.auth.token.email_verified == true;
+    }
+
+    // Full read/write for authenticated user
+    match /tasksMirror/{doc} {
+      allow read, write: if isAllowedUser();
+    }
+    match /clients/{doc} {
+      allow read, write: if isAllowedUser();
+    }
+    match /team/{doc} {
+      allow read, write: if isAllowedUser();
+    }
+    match /domains/{doc} {
+      allow read, write: if isAllowedUser();
+    }
+    match /activityLog/{doc} {
+      allow read, write: if isAllowedUser();
+    }
+    match /scans/{doc} {
+      allow read, write: if isAllowedUser();
+    }
+
+    // Read-only collections (written by Cloud Functions)
+    match /channelMap/{doc} {
+      allow read: if isAllowedUser();
+    }
+    match /checkins/{doc} {
+      allow read: if isAllowedUser();
+    }
+    match /pendingSuggestions/{doc} {
+      allow read: if isAllowedUser();
+    }
+    match /clientBoardSync/{doc} {
+      allow read: if isAllowedUser();
+    }
+    match /projects/{clientId}/projects/{doc} {
+      allow read: if isAllowedUser();
+    }
+    match /coachingLog/{userId}/entries/{doc} {
+      allow read: if isAllowedUser();
+    }
+
+    // Deny everything else
     match /{document=**} {
       allow read, write: if false;
     }

@@ -7,6 +7,28 @@ import {
 import { db, FUNCTIONS_URL } from "../firebase";
 import type { Task, Client, TeamMember, Domain, Scan, LogEntry } from "../types";
 
+// ─── Mutation Logging ────────────────────────────────────────────────────────
+
+async function logMutation(
+  action: string,
+  detail: string,
+  projectId?: string | null,
+  taskId?: string | null,
+) {
+  try {
+    await addDoc(collection(db, "activityLog"), {
+      ts: serverTimestamp(),
+      action,
+      detail,
+      projectId: projectId ?? null,
+      taskId: taskId ?? null,
+      source: "warboard",
+    });
+  } catch (err) {
+    console.error("logMutation failed:", err);
+  }
+}
+
 // ─── Tasks (from tasksMirror, grouped by projectId) ─────────────────────────
 
 export function useTasks() {
@@ -49,10 +71,11 @@ export function useTasks() {
       [field]: value,
       lastSyncedAt: serverTimestamp(),
     });
+    await logMutation("UPDATE", `Task ${taskId}: ${field} → ${String(value)}`, projectId, taskId);
   };
 
   const addTask = async (projectId: string) => {
-    await addDoc(collection(db, "tasksMirror"), {
+    const ref = await addDoc(collection(db, "tasksMirror"), {
       projectId,
       task: "New task",
       assignee: null,
@@ -70,10 +93,12 @@ export function useTasks() {
       parentTaskId: null,
       lastSyncedAt: serverTimestamp(),
     });
+    await logMutation("CREATE", `New task created in ${projectId}`, projectId, ref.id);
   };
 
   const deleteTask = async (_projectId: string, taskId: string) => {
     await deleteDoc(doc(db, "tasksMirror", taskId));
+    await logMutation("DELETE", `Task ${taskId} deleted`, _projectId, taskId);
   };
 
   return { tasksByProject, getT, allFlat, updateTask, addTask, deleteTask };
@@ -96,6 +121,7 @@ export function useClients() {
       [field]: value,
       updatedAt: serverTimestamp(),
     });
+    await logMutation("CLIENT", `Client ${clientId}: ${field} → ${String(value)}`, clientId);
   };
 
   const addClient = async (cl: Omit<Client, "clickupFolderId"> & { id: string }) => {
@@ -104,6 +130,7 @@ export function useClients() {
       clickupFolderId: null,
       updatedAt: serverTimestamp(),
     });
+    await logMutation("CLIENT", `Client ${cl.id} created`, cl.id);
   };
 
   return { clients, updateClient, addClient, setClients };
@@ -130,6 +157,7 @@ export function useTeam() {
       rate: null,
       clients: {},
     });
+    await logMutation("UPDATE", `Team member ${member.name} added`);
   };
 
   return { team, addTeamMember };

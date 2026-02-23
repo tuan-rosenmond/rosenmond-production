@@ -4,6 +4,7 @@ import { SCAN_SYSTEM_PROMPT } from "../prompts/system";
 import { buildScanContext } from "../pipeline/context";
 import { collections, serverTimestamp } from "../shared/firestore";
 import { logActivity } from "../shared/logger";
+import { buildIntelligenceSnapshot, formatIntelligenceForPrompt } from "../intelligence/scan";
 
 const anthropic = new Anthropic();
 
@@ -37,8 +38,12 @@ export const warboardScan = onRequest(
         source: "warboard",
       });
 
-      // Build full board snapshot
-      const ctx = await buildScanContext();
+      // Build full board snapshot + intelligence data
+      const [ctx, intelligence] = await Promise.all([
+        buildScanContext(),
+        buildIntelligenceSnapshot(),
+      ]);
+      const intelligenceText = formatIntelligenceForPrompt(intelligence);
 
       // Build compact summary for Claude
       const boardSummary = ctx.allTasks.map(t =>
@@ -69,7 +74,10 @@ ${teamSummary}
 CLIENTS:
 ${clientSummary}
 
-STATS: total=${ctx.stats.total} | critical_open=${ctx.stats.criticalOpen} | unassigned=${ctx.stats.unassigned} | overdue=${ctx.stats.overdue} | done=${ctx.stats.done}`;
+STATS: total=${ctx.stats.total} | critical_open=${ctx.stats.criticalOpen} | unassigned=${ctx.stats.unassigned} | overdue=${ctx.stats.overdue} | done=${ctx.stats.done}
+
+INTELLIGENCE ANALYSIS:
+${intelligenceText}`;
 
       // Claude call — prefill with { to enforce JSON
       const claudeRes = await anthropic.messages.create({

@@ -1,13 +1,16 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { THREAT_COLOR } from "./constants";
 import { useTasks, useClients, useTeam, useDomains, useScans, useActivityLog, useCmd } from "./hooks/useFirestore";
+import { useAuth } from "./hooks/useAuth";
 import type { Task, TeamMember } from "./types";
+import { FUNCTIONS_URL } from "./firebase";
 
 import Topbar from "./components/Topbar";
 import MapView from "./components/MapView";
 import BoardView from "./components/BoardView";
 import NodeModal from "./components/NodeModal";
 import { AddClientModal } from "./components/ui";
+import LoginScreen from "./components/LoginScreen";
 import IntelTab from "./components/Sidebar/IntelTab";
 import SquadTab from "./components/Sidebar/SquadTab";
 import LogTab from "./components/Sidebar/LogTab";
@@ -15,6 +18,9 @@ import ScanTab from "./components/Sidebar/ScanTab";
 import CmdTab from "./components/Sidebar/CmdTab";
 
 export default function App() {
+  // Auth
+  const { user, state: authState, error: authError, login, logout } = useAuth();
+
   // Firestore hooks
   const { getT, allFlat, updateTask, addTask, deleteTask } = useTasks();
   const { clients, updateClient, addClient } = useClients();
@@ -23,6 +29,19 @@ export default function App() {
   const { scanHistory, scanning, runScan, replyScan } = useScans();
   const { actLog } = useActivityLog();
   const { loading, sendCmd } = useCmd();
+
+  // Sync on first authenticated load
+  const syncedRef = useRef(false);
+  useEffect(() => {
+    if (authState === "authenticated" && !syncedRef.current) {
+      syncedRef.current = true;
+      fetch(`${FUNCTIONS_URL}/warboardSync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ actor: user?.email }),
+      }).catch(err => console.error("Sync failed:", err));
+    }
+  }, [authState]);
 
   // UI state
   const [view, setView] = useState("map");
@@ -60,6 +79,19 @@ export default function App() {
     updateClient(cid, "x", x);
     updateClient(cid, "y", y);
   };
+
+  // Auth states: loading → login screen → dashboard
+  if (authState === "loading") {
+    return (
+      <div style={{ fontFamily: "'JetBrains Mono',monospace", background: "#0d1117", color: "#5a7a8a", height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, letterSpacing: 3 }}>
+        AUTHENTICATING...
+      </div>
+    );
+  }
+
+  if (authState === "unauthenticated") {
+    return <LoginScreen error={authError} onLogin={login} />;
+  }
 
   return (
     <div style={{ fontFamily: "'JetBrains Mono','Courier New',monospace", background: "#0d1117", color: "#b8ccd8", height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden", userSelect: "none" }}>

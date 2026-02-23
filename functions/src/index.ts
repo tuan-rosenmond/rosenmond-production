@@ -9,9 +9,9 @@ export { warboardSync } from "./warboard/sync";
 export { clickupWebhook } from "./clickup/webhook";
 
 // Step 3: Slack pipeline
-// export { slackEvents } from "./slack/events";
-// export { slackCommands } from "./slack/commands";
-// export { slackActions } from "./slack/actions";
+export { slackEvents } from "./slack/events";
+export { slackCommands } from "./slack/commands";
+export { slackActions } from "./slack/actions";
 
-// Step 4: Intelligence layer
-// export { checkinRun } from "./checkin/scheduler";
+// Step 4: Check-in scheduler
+export { checkinRun, checkinScheduled } from "./checkin/scheduler";

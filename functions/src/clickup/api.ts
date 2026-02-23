@@ -291,3 +291,43 @@ export async function addTaskComment(taskId: string, comment: string): Promise<v
     source: "system",
   });
 }
+
+export async function moveTaskToList(taskId: string, folderId: string, targetListType: "active" | "backlog"): Promise<void> {
+  // Resolve the target list from the folder
+  const spaceId = env("CLICKUP_PROJECTS_SPACE_ID");
+  const foldersRes = await apiGet<{ folders: Array<{ id: string; name: string; lists: Array<{ id: string; name: string }> }> }>(
+    `/space/${spaceId}/folder`,
+  );
+
+  const folder = foldersRes.folders.find((f) => f.id === folderId);
+  if (!folder) throw new Error(`Folder ${folderId} not found`);
+
+  const keyword = targetListType === "active" ? "active" : "backlog";
+  const targetList = folder.lists.find((l) => l.name.toLowerCase().includes(keyword));
+  if (!targetList) throw new Error(`No ${targetListType} list found in folder ${folderId}`);
+
+  await apiPut(`/task/${taskId}`, { list: targetList.id });
+
+  await logActivity({
+    action: "CLICKUP",
+    detail: `Moved task ${taskId} to ${targetList.name} (list ${targetList.id})`,
+    taskId,
+    source: "system",
+  });
+}
+
+export async function resolveClientBoardListId(folderId: string): Promise<string | null> {
+  const spaceId = env("CLICKUP_PROJECTS_SPACE_ID");
+  const foldersRes = await apiGet<{ folders: Array<{ id: string; lists: Array<{ id: string; name: string }> }> }>(
+    `/space/${spaceId}/folder`,
+  );
+
+  const folder = foldersRes.folders.find((f) => f.id === folderId);
+  if (!folder) return null;
+
+  const clientBoardList = folder.lists.find((l) =>
+    l.name.toLowerCase().includes("client board") || l.name.toLowerCase().includes("client-board"),
+  );
+
+  return clientBoardList?.id ?? null;
+}
