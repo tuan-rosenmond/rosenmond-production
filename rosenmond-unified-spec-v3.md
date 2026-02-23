@@ -476,6 +476,22 @@ Warboard-owned state. Threat level and map position don't exist in ClickUp.
 }
 ```
 
+### `/slackArchive/{ts}`
+Permanent message archive — workaround for Slack free plan 90-day message limit. Every incoming Slack message is persisted here in real-time by the events listener.
+```typescript
+{
+  channelId: string,
+  channelName: string,
+  userId: string,
+  userName: string,
+  text: string,
+  ts: string,           // Slack timestamp — unique message ID
+  threadTs: string | null,
+  files: Array<{ name: string, url: string, mimetype: string }>,
+  savedAt: Timestamp
+}
+```
+
 ---
 
 ## Shared Constants
@@ -1087,6 +1103,7 @@ GMAIL_CLIENT_SECRET=...
 - #ai-ops approval messages with buttons
 - `/task` slash command
 - Passive channel monitoring for mapped channels
+- Persist all incoming Slack messages to `/slackArchive` collection (permanent backup — workaround for Slack free plan 90-day message limit)
 
 **Milestone: Work stops disappearing. Team input is captured.**
 
