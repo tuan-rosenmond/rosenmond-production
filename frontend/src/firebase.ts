@@ -3,14 +3,12 @@ import { getFirestore, connectFirestoreEmulator } from "firebase/firestore";
 import { getAuth, connectAuthEmulator } from "firebase/auth";
 
 const firebaseConfig = {
-  // Populate from Firebase Console → Project Settings → Your apps → Web app
-  // These are safe to commit — security is enforced by Firestore rules + Auth
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "rosenmond-production.firebaseapp.com",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "rosenmond-production",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "",
+  apiKey: "AIzaSyDEwsxa9eKXqdOKCq3VhRQn0YrnRWF4aR4",
+  authDomain: "rosenmond-produc.firebaseapp.com",
+  projectId: "rosenmond-produc",
+  storageBucket: "rosenmond-produc.firebasestorage.app",
+  messagingSenderId: "193822452089",
+  appId: "1:193822452089:web:1a36506388201fb452e7a8",
 };
 
 export const app = initializeApp(firebaseConfig);
@@ -24,4 +22,4 @@ if (import.meta.env.DEV && import.meta.env.VITE_USE_EMULATORS === "true") {
 }
 
 // Cloud Functions base URL
-export const FUNCTIONS_URL = import.meta.env.VITE_FUNCTIONS_URL || "https://europe-west1-rosenmond-production.cloudfunctions.net";
+export const FUNCTIONS_URL = import.meta.env.VITE_FUNCTIONS_URL || "https://europe-west1-rosenmond-produc.cloudfunctions.net";

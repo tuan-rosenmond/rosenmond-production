@@ -3,7 +3,7 @@ import * as path from "path";
 import * as fs from "fs";
 
 // Connects to emulator if FIRESTORE_EMULATOR_HOST is set, otherwise production
-admin.initializeApp({ projectId: "rosenmond-production" });
+admin.initializeApp({ projectId: "rosenmond-produc" });
 const db = admin.firestore();
 
 interface Doc { id: string; [key: string]: unknown }

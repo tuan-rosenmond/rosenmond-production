@@ -1,10 +1,11 @@
 import * as admin from "firebase-admin";
+import { getFirestore, FieldValue, Timestamp as FsTimestamp } from "firebase-admin/firestore";
 
 if (!admin.apps.length) {
   admin.initializeApp();
 }
 
-export const db = admin.firestore();
+export const db = getFirestore();
 
 export const collections = {
   tasksMirror:       () => db.collection("tasksMirror"),
@@ -21,6 +22,6 @@ export const collections = {
   coachingLog:       (userId: string) => db.collection("coachingLog").doc(userId).collection("entries"),
 } as const;
 
-export const serverTimestamp = admin.firestore.FieldValue.serverTimestamp;
-export const Timestamp = admin.firestore.Timestamp;
-export type FirestoreTimestamp = admin.firestore.Timestamp;
+export const serverTimestamp = FieldValue.serverTimestamp;
+export const Timestamp = FsTimestamp;
+export type FirestoreTimestamp = FsTimestamp;
