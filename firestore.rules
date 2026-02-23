@@ -48,6 +48,9 @@ service cloud.firestore {
     match /coachingLog/{userId}/entries/{doc} {
       allow read: if isAllowedUser();
     }
+    match /slackArchive/{doc} {
+      allow read: if isAllowedUser();
+    }
 
     // Deny everything else
     match /{document=**} {

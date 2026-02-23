@@ -18,6 +18,7 @@ export const collections = {
   checkins:          () => db.collection("checkins"),
   pendingSuggestions: () => db.collection("pendingSuggestions"),
   clientBoardSync:   () => db.collection("clientBoardSync"),
+  slackArchive:      () => db.collection("slackArchive"),
   projects:          (clientId: string) => db.collection("projects").doc(clientId).collection("projects"),
   coachingLog:       (userId: string) => db.collection("coachingLog").doc(userId).collection("entries"),
 } as const;

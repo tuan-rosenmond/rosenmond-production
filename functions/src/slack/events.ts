@@ -55,6 +55,25 @@ export const slackEvents = onRequest(
       const text = event.text || "";
       const channel = event.channel || "";
       const userId = event.user || "";
+      const messageTs = event.ts || "";
+      const threadTs = event.thread_ts || null;
+
+      // Archive every message permanently (Slack free plan 90-day workaround)
+      await collections.slackArchive().doc(messageTs || `${Date.now()}`).set({
+        channelId: channel,
+        channelName: "",
+        userId,
+        userName: "",
+        text,
+        ts: messageTs,
+        threadTs,
+        files: (event.files || []).map((f: { name?: string; url_private?: string; mimetype?: string }) => ({
+          name: f.name || "",
+          url: f.url_private || "",
+          mimetype: f.mimetype || "",
+        })),
+        savedAt: serverTimestamp(),
+      });
 
       // Look up channel context
       let channelContext: { channelName: string; client: string | null; discipline: string | null } | undefined;
