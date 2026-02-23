@@ -15,3 +15,6 @@ export { slackActions } from "./slack/actions";
 
 // Step 4: Check-in scheduler
 export { checkinRun, checkinScheduled } from "./checkin/scheduler";
+
+// Step 4: Daily digest scheduler
+export { digestRun, digestScheduled } from "./intelligence/digestScheduler";

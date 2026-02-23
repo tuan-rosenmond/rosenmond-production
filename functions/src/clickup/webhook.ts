@@ -5,6 +5,7 @@ import { logActivity } from "../shared/logger";
 import { CLICKUP_TO_WARBOARD } from "../shared/constants";
 import { syncToClientBoard } from "./clientboard";
 import { moveTaskToList } from "./api";
+import { getSlackClient, AI_OPS_CHANNEL } from "../slack/client";
 
 interface WebhookPayload {
   event: string;
@@ -127,6 +128,45 @@ export const clickupWebhook = onRequest(
                 } catch (moveErr) {
                   // Non-critical — log and continue
                   console.warn(`Failed to move task ${task_id} to Active Work:`, moveErr);
+                }
+              }
+            }
+
+            // Real-time billing flag: hourly task → DONE with 0h → immediate alert
+            if (warboardStatus === "DONE") {
+              const taskData = taskDoc.data();
+              const hours = (taskData?.hoursLogged as number) || 0;
+              const isHourly = (taskData?.clientBilling as string) === "hourly" ||
+                (taskData?.teamBilling as string) === "hourly" ||
+                (taskData?.billable as boolean);
+
+              if (isHourly && hours === 0) {
+                const taskName = (taskData?.task as string) || task_id;
+                const projectId = (taskData?.projectId as string) || "unknown";
+                try {
+                  const slack = getSlackClient();
+                  await slack.chat.postMessage({
+                    channel: AI_OPS_CHANNEL(),
+                    text: `BILLING FLAG: ${taskName} completed with 0h logged`,
+                    blocks: [
+                      {
+                        type: "section",
+                        text: {
+                          type: "mrkdwn",
+                          text: `:red_circle: *REVENUE LEAK — ${taskName}*\nProject: ${projectId} | Task: ${task_id}\nHourly task moved to DONE with *0 hours logged*. This is a billing gap.`,
+                        },
+                      },
+                    ],
+                  });
+                  await logActivity({
+                    action: "BILLING",
+                    detail: `Revenue leak: hourly task "${taskName}" (${task_id}) moved to DONE with 0h logged`,
+                    taskId: task_id,
+                    projectId,
+                    source: "clickup-webhook",
+                  });
+                } catch (billingErr) {
+                  console.warn(`Failed to post billing flag for ${task_id}:`, billingErr);
                 }
               }
             }

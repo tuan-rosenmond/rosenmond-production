@@ -2,10 +2,11 @@
 // Handles: url_verification, message.im (DMs), message.channels (monitored), app_mention
 
 import { onRequest } from "firebase-functions/v2/https";
-import { verifySlackSignature, getSlackClient, AI_OPS_CHANNEL } from "./client";
+import { verifySlackSignature, getSlackClient, AI_OPS_CHANNEL, TUAN_USER_ID } from "./client";
 import { collections, serverTimestamp } from "../shared/firestore";
 import { logActivity } from "../shared/logger";
-import { classifyMessage, type ClassificationResult } from "../pipeline/classify";
+import { classifyMessage } from "../pipeline/classify";
+import { handleAiPmCommand } from "./aipm";
 
 export const slackEvents = onRequest(
   { cors: false, region: "europe-west1" },
@@ -75,6 +76,74 @@ export const slackEvents = onRequest(
         savedAt: serverTimestamp(),
       });
 
+      // Handle @ai-pm commands (app_mention events)
+      if (eventType === "app_mention" || text.toLowerCase().includes("ai-pm")) {
+        await handleAiPmCommand(text, channel, userId);
+        return;
+      }
+
+      // Handle check-in DM responses from Tuan
+      if (eventType === "message" && event.channel_type === "im" && userId === TUAN_USER_ID()) {
+        // Check if there's an active check-in today
+        const today = new Date().toISOString().slice(0, 10);
+        const checkinSnap = await collections.checkins()
+          .where("date", "==", today)
+          .limit(1)
+          .get();
+
+        if (!checkinSnap.empty) {
+          const checkinDoc = checkinSnap.docs[0];
+          // Append Tuan's reply to the transcript
+          const existing = checkinDoc.data();
+          const transcript = (existing.transcript as string) || "";
+          await checkinDoc.ref.update({
+            transcript: transcript + `\n\n[TUAN]: ${text}`,
+            lastReplyAt: serverTimestamp(),
+          });
+
+          // Route through CMD pipeline to apply any updates
+          try {
+            const { buildCommandContext } = await import("../pipeline/context");
+            const { executeCmdResponse } = await import("../pipeline/execute");
+            const Anthropic = (await import("@anthropic-ai/sdk")).default;
+            const { buildCmdSystemPrompt } = await import("../prompts/system");
+            const anthropic = new Anthropic();
+
+            const ctx = await buildCommandContext();
+            const systemPrompt = buildCmdSystemPrompt(ctx);
+            const claudeRes = await anthropic.messages.create({
+              model: "claude-sonnet-4-20250514",
+              max_tokens: 8096,
+              system: systemPrompt,
+              messages: [{ role: "user", content: `Check-in response from Tuan: "${text}"` }],
+            });
+
+            const raw = claudeRes.content[0].type === "text" ? claudeRes.content[0].text : "";
+            const jsonStr = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+            const parsed = JSON.parse(jsonStr);
+
+            if (parsed.taskUpdates?.length || parsed.newTasks?.length || parsed.clientUpdates?.length) {
+              const result = await executeCmdResponse(parsed);
+              const slack = getSlackClient();
+              await slack.chat.postMessage({
+                channel,
+                text: `:white_check_mark: ${parsed.message || "Updates applied."}\nChanges: ${result.taskUpdates} updates, ${result.newTasks} new tasks.`,
+              });
+            }
+          } catch (cmdErr) {
+            // Non-critical — log but don't fail
+            console.warn("Check-in response processing error:", cmdErr);
+          }
+
+          await logActivity({
+            action: "CHECKIN",
+            detail: `Tuan replied to check-in: "${text.slice(0, 100)}"`,
+            source: "slack",
+          });
+          return;
+        }
+      }
+
       // Look up channel context
       let channelContext: { channelName: string; client: string | null; discipline: string | null } | undefined;
       const channelDoc = await collections.channelMap().doc(channel).get();
@@ -129,6 +198,11 @@ export const slackEvents = onRequest(
             taskDisciplines: classification.task_disciplines,
             existingTaskMatch: classification.existing_task_match,
             statusUpdateTo: classification.status_update_to,
+            clientBilling: classification.client_billing,
+            teamBilling: classification.team_billing,
+            timeTrackingRequired: classification.time_tracking_required,
+            billingFlag: classification.billing_flag,
+            scopeFlag: classification.scope_flag,
             reasoning: classification.reasoning,
             status: "pending",
           });

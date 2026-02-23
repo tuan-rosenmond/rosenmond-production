@@ -6,6 +6,7 @@ import { verifySlackSignature, getSlackClient } from "./client";
 import { collections, serverTimestamp } from "../shared/firestore";
 import { logActivity } from "../shared/logger";
 import { createTask, addTaskComment } from "../clickup/api";
+import { sendNudge } from "../intelligence/coaching";
 
 export const slackActions = onRequest(
   { cors: false, region: "europe-west1" },
@@ -75,6 +76,18 @@ async function handleBlockActions(payload: Record<string, unknown>): Promise<voi
     case "edit_before_create":
       await openEditModal(suggestionId, payload);
       break;
+    case "send_coaching_nudge":
+      await handleSendNudge(suggestionId, payload);
+      break;
+    case "snooze_nudge":
+      await handleSnoozeNudge(suggestionId, payload);
+      break;
+    case "approve_digest":
+      await handleApproveDigest(suggestionId, payload);
+      break;
+    case "hold_digest":
+      await rejectSuggestion(suggestionId, payload);
+      break;
   }
 }
 
@@ -101,6 +114,11 @@ async function approveTask(
       priority: priority.toUpperCase(),
     });
 
+    // Resolve billing fields from classification
+    const clientBilling = (sugg.clientBilling as string) || null;
+    const teamBilling = (sugg.teamBilling as string) || null;
+    const billable = clientBilling === "hourly" || teamBilling === "hourly";
+
     // Mirror to Firestore
     await collections.tasksMirror().doc(clickupTaskId).set({
       projectId: project,
@@ -112,9 +130,9 @@ async function approveTask(
       notes: `Created from Slack: "${(sugg.message as string || "").slice(0, 200)}"`,
       dueDate: null,
       hoursLogged: 0,
-      clientBilling: null,
-      teamBilling: null,
-      billable: false,
+      clientBilling,
+      teamBilling,
+      billable,
       clickupTaskId,
       lastSyncedAt: serverTimestamp(),
     }, { merge: true });
@@ -342,6 +360,125 @@ async function handleViewSubmission(payload: Record<string, unknown>): Promise<v
     detail: `Task "${title}" created (edited) from Slack → ClickUp ${clickupTaskId}`,
     projectId: project,
     taskId: clickupTaskId,
+    source: "slack",
+  });
+}
+
+async function handleSendNudge(
+  suggestionId: string,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  const slack = getSlackClient();
+
+  try {
+    await sendNudge(suggestionId);
+
+    // Update the #ai-ops message
+    const message = payload.message as Record<string, unknown> | undefined;
+    const channel = (payload.channel as Record<string, string>)?.id;
+    const messageTs = message?.ts as string;
+
+    if (channel && messageTs) {
+      const doc = await collections.pendingSuggestions().doc(suggestionId).get();
+      const data = doc.data();
+      await slack.chat.update({
+        channel,
+        ts: messageTs,
+        text: "Coaching nudge sent",
+        blocks: [{
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `:white_check_mark: *Nudge sent to ${data?.memberName || "team member"}*`,
+          },
+        }],
+      });
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    await logActivity({
+      action: "COACHING",
+      detail: `send_nudge error: ${msg}`,
+      source: "slack",
+    });
+  }
+}
+
+async function handleSnoozeNudge(
+  suggestionId: string,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  const slack = getSlackClient();
+
+  await collections.pendingSuggestions().doc(suggestionId).update({
+    status: "snoozed",
+    resolvedAt: serverTimestamp(),
+  });
+
+  const message = payload.message as Record<string, unknown> | undefined;
+  const channel = (payload.channel as Record<string, string>)?.id;
+  const messageTs = message?.ts as string;
+
+  if (channel && messageTs) {
+    await slack.chat.update({
+      channel,
+      ts: messageTs,
+      text: "Nudge snoozed",
+      blocks: [{
+        type: "section",
+        text: { type: "mrkdwn", text: ":zzz: *Already handled — nudge snoozed*" },
+      }],
+    });
+  }
+}
+
+async function handleApproveDigest(
+  suggestionId: string,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  const slack = getSlackClient();
+
+  const doc = await collections.pendingSuggestions().doc(suggestionId).get();
+  if (!doc.exists) return;
+  const data = doc.data()!;
+
+  const digestText = data.digestText as string;
+  const mgmtChannel = process.env.SLACK_MGMT_CHANNEL_ID;
+
+  // Post digest to #mngmt-rosenmond
+  if (mgmtChannel && digestText) {
+    await slack.chat.postMessage({
+      channel: mgmtChannel,
+      text: digestText,
+      mrkdwn: true,
+    });
+  }
+
+  await collections.pendingSuggestions().doc(suggestionId).update({
+    status: "approved",
+    resolvedAt: serverTimestamp(),
+  });
+
+  // Update #ai-ops message
+  const message = payload.message as Record<string, unknown> | undefined;
+  const channel = (payload.channel as Record<string, string>)?.id;
+  const messageTs = message?.ts as string;
+
+  if (channel && messageTs) {
+    await slack.chat.update({
+      channel,
+      ts: messageTs,
+      text: "Digest posted to team",
+      blocks: [{
+        type: "section",
+        text: { type: "mrkdwn", text: ":white_check_mark: *Digest posted to #mngmt-rosenmond*" },
+      }],
+    });
+  }
+
+  await logActivity({
+    action: "SLACK",
+    detail: "Daily digest posted to #mngmt-rosenmond",
     source: "slack",
   });
 }

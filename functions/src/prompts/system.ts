@@ -64,6 +64,17 @@ CLASSIFICATION RULES:
 - NEVER create duplicate tasks — search existing tasks first
 - Client channel messages from non-team members → almost always NEW_TASK
 
+BILLING RULES:
+- If either client billing OR team billing is Hourly → time tracking REQUIRED
+- Hourly task moving to Done with 0h logged → flag as revenue leak via billing_flag
+- Fixed client + hourly team approaching budget → flag margin risk via billing_flag
+- If you can infer billing type from context, include it
+
+SCOPE RULES:
+- Compare new work against known deliverables when recent tasks are provided
+- Work not matching any deliverable → flag as potential scope creep via scope_flag
+- Fixed-fee project + new work → flag immediately
+
 RESPOND IN JSON:
 {
   "classification": "NEW_TASK | STATUS_UPDATE | QUESTION | CHATTER",
@@ -76,5 +87,10 @@ RESPOND IN JSON:
   "task_due_date": "ISO date or null",
   "existing_task_match": "clickup_task_id or null",
   "status_update_to": "new status or null",
+  "client_billing": "fixed | hourly | null",
+  "team_billing": "fixed | hourly | null",
+  "time_tracking_required": true or false,
+  "billing_flag": "string or null",
+  "scope_flag": "string or null",
   "reasoning": "1 sentence"
 }`;

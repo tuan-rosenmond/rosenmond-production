@@ -14,6 +14,11 @@ export interface ClassificationResult {
   task_due_date: string | null;
   existing_task_match: string | null;
   status_update_to: string | null;
+  client_billing: string | null;
+  team_billing: string | null;
+  time_tracking_required: boolean;
+  billing_flag: string | null;
+  scope_flag: string | null;
   reasoning: string;
 }
 
@@ -52,6 +57,11 @@ export async function classifyMessage(
       task_due_date: null,
       existing_task_match: null,
       status_update_to: null,
+      client_billing: null,
+      team_billing: null,
+      time_tracking_required: false,
+      billing_flag: null,
+      scope_flag: null,
       reasoning: `Failed to parse classification response`,
     };
   }
