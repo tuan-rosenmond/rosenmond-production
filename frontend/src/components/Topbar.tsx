@@ -57,7 +57,7 @@ export default function Topbar({ critCount, focusCount, openCount, doneCount, vi
           {scanning ? <span style={{ animation: "blink 0.7s infinite" }}>SCANNING...</span> : "\u2295 SCAN FIELD"}
         </button>
         <div style={{ display: "flex", gap: 4, background: T.input, padding: 4, borderRadius: 8, border: `1px solid ${T.borderSub}` }}>
-          {([["map", "\u2B21 MAP"], ["board", "\u2261 BOARD"]] as const).map(([v, l]) => (
+          {([["map", "\u2B21 MAP"], ["board", "\u2261 BOARD"], ["personal", "\u2726 PERSONAL"]] as const).map(([v, l]) => (
             <button key={v} onClick={() => setView(v)} style={{
               padding: "7px 18px", fontSize: 11, letterSpacing: 0.5, fontFamily: SANS, fontWeight: 600,
               background: view === v ? `${T.accent}20` : "transparent",

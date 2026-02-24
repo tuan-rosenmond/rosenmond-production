@@ -13,6 +13,9 @@ service cloud.firestore {
     match /tasksMirror/{doc} {
       allow read, write: if isAllowedUser();
     }
+    match /personalTasks/{doc} {
+      allow read, write: if isAllowedUser();
+    }
     match /clients/{doc} {
       allow read, write: if isAllowedUser();
     }
@@ -26,6 +29,9 @@ service cloud.firestore {
       allow read, write: if isAllowedUser();
     }
     match /scans/{doc} {
+      allow read, write: if isAllowedUser();
+    }
+    match /feedback/{doc} {
       allow read, write: if isAllowedUser();
     }
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { THREAT_COLOR, T, SANS, MONO } from "./constants";
-import { useTasks, useClients, useTeam, useDomains, useScans, useActivityLog, useCmd } from "./hooks/useFirestore";
+import { useTasks, useClients, useTeam, useDomains, useScans, useActivityLog, useCmd, usePersonalTasks } from "./hooks/useFirestore";
 import { useAuth } from "./hooks/useAuth";
 import type { Task, TeamMember } from "./types";
 import { FUNCTIONS_URL } from "./firebase";
@@ -8,6 +8,7 @@ import { FUNCTIONS_URL } from "./firebase";
 import Topbar from "./components/Topbar";
 import MapView from "./components/MapView";
 import BoardView from "./components/BoardView";
+import PersonalView from "./components/PersonalView";
 import NodeModal from "./components/NodeModal";
 import { AddClientModal } from "./components/ui";
 import LoginScreen from "./components/LoginScreen";
@@ -16,6 +17,7 @@ import SquadTab from "./components/Sidebar/SquadTab";
 import LogTab from "./components/Sidebar/LogTab";
 import ScanTab from "./components/Sidebar/ScanTab";
 import CmdTab from "./components/Sidebar/CmdTab";
+import FeedbackButton from "./components/FeedbackButton";
 
 export default function App() {
   // Auth
@@ -29,6 +31,7 @@ export default function App() {
   const { scanHistory, scanning, runScan, replyScan } = useScans();
   const { actLog } = useActivityLog();
   const { loading, sendCmd } = useCmd();
+  const { personalTasks, addPersonalTask, updatePersonalTask, deletePersonalTask, pushToTeam, pullFromTeam, unlinkTask } = usePersonalTasks();
 
   // Sync on first authenticated load
   const syncedRef = useRef(false);
@@ -115,6 +118,7 @@ export default function App() {
         onUpdateTask={updateTask} onAddTask={addTask} onDeleteTask={deleteTask} onUpdateClient={updateClient}
         onClose={() => setDrawer(null)} />}
       {showAdd && <AddClientModal onAdd={handleAddClient} onClose={() => setShowAdd(false)} team={team} />}
+      <FeedbackButton />
 
       {/* Topbar */}
       <Topbar critCount={critCount} focusCount={focusCount} openCount={openCount} doneCount={doneCount}
@@ -135,6 +139,12 @@ export default function App() {
               bFiltP={bFiltP} setBFiltP={setBFiltP} bFiltS={bFiltS} setBFiltS={setBFiltS}
               bFiltA={bFiltA} setBFiltA={setBFiltA} bFiltD={bFiltD} setBFiltD={setBFiltD}
               bSearch={bSearch} setBSearch={setBSearch} threatColor={THREAT_COLOR} />
+          )}
+          {view === "personal" && (
+            <PersonalView
+              personalTasks={personalTasks} allTeamTasks={allFlat} clients={clients} domains={domains}
+              onAdd={addPersonalTask} onUpdate={updatePersonalTask} onDelete={deletePersonalTask}
+              onPush={pushToTeam} onPull={pullFromTeam} onUnlink={unlinkTask} />
           )}
         </div>
 

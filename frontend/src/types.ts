@@ -83,3 +83,19 @@ export interface LogEntry {
   taskId: string | null;
   source: string;
 }
+
+export interface PersonalTask {
+  id: string;
+  task: string;
+  status: string;
+  priority: string;
+  notes: string;
+  dueDate: string | null;
+  disciplines: string[];
+  clientId: string | null;
+  domainId: string | null;
+  linkedTeamTaskId: string | null;
+  linkDirection: "pushed" | "pulled" | null;
+  createdAt: Date;
+  updatedAt: Date;
+}

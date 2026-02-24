@@ -5,7 +5,7 @@ import {
   type DocumentData,
 } from "firebase/firestore";
 import { db, FUNCTIONS_URL } from "../firebase";
-import type { Task, Client, TeamMember, Domain, Scan, LogEntry } from "../types";
+import type { Task, Client, TeamMember, Domain, Scan, LogEntry, PersonalTask } from "../types";
 
 // ─── Mutation Logging ────────────────────────────────────────────────────────
 
@@ -288,6 +288,156 @@ export function useActivityLog() {
   };
 
   return { actLog, addLog };
+}
+
+// ─── Personal Tasks ─────────────────────────────────────────────────────────
+
+export function usePersonalTasks() {
+  const [personalTasks, setPersonalTasks] = useState<PersonalTask[]>([]);
+
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "personalTasks"), (snap) => {
+      const tasks: PersonalTask[] = snap.docs.map((d) => {
+        const data = d.data();
+        return {
+          id: d.id,
+          task: data.task || "",
+          status: data.status || "OPEN",
+          priority: data.priority || "NORMAL",
+          notes: data.notes || "",
+          dueDate: data.dueDate || null,
+          disciplines: data.disciplines || [],
+          clientId: data.clientId || null,
+          domainId: data.domainId || null,
+          linkedTeamTaskId: data.linkedTeamTaskId || null,
+          linkDirection: data.linkDirection || null,
+          createdAt: data.createdAt?.toDate?.() || new Date(),
+          updatedAt: data.updatedAt?.toDate?.() || new Date(),
+        };
+      });
+      setPersonalTasks(tasks);
+    });
+    return unsub;
+  }, []);
+
+  const addPersonalTask = async (taskName: string) => {
+    const ref = await addDoc(collection(db, "personalTasks"), {
+      task: taskName,
+      status: "OPEN",
+      priority: "NORMAL",
+      notes: "",
+      dueDate: null,
+      disciplines: [],
+      clientId: null,
+      domainId: null,
+      linkedTeamTaskId: null,
+      linkDirection: null,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    await logMutation("PERSONAL", `Personal task created: ${taskName}`, null, ref.id);
+  };
+
+  const updatePersonalTask = async (taskId: string, field: string, value: unknown) => {
+    await updateDoc(doc(db, "personalTasks", taskId), {
+      [field]: value,
+      updatedAt: serverTimestamp(),
+    });
+    await logMutation("PERSONAL", `Personal task ${taskId}: ${field} → ${String(value)}`, null, taskId);
+  };
+
+  const deletePersonalTask = async (taskId: string) => {
+    // If linked, clear the back-link on the team task first
+    const task = personalTasks.find(t => t.id === taskId);
+    if (task?.linkedTeamTaskId) {
+      await updateDoc(doc(db, "tasksMirror", task.linkedTeamTaskId), {
+        linkedPersonalTaskId: null,
+      });
+    }
+    await deleteDoc(doc(db, "personalTasks", taskId));
+    await logMutation("PERSONAL", `Personal task ${taskId} deleted`, null, taskId);
+  };
+
+  const pushToTeam = async (taskId: string, projectId: string) => {
+    const task = personalTasks.find(t => t.id === taskId);
+    if (!task) return;
+
+    // Create a new tasksMirror doc
+    const ref = await addDoc(collection(db, "tasksMirror"), {
+      projectId,
+      task: task.task,
+      assignee: null,
+      status: task.status,
+      priority: task.priority,
+      disciplines: task.disciplines,
+      notes: task.notes,
+      dueDate: task.dueDate,
+      hoursLogged: 0,
+      clientBilling: null,
+      teamBilling: null,
+      billable: false,
+      clickupTaskId: null,
+      project: null,
+      parentTaskId: null,
+      linkedPersonalTaskId: taskId,
+      lastSyncedAt: serverTimestamp(),
+    });
+
+    // Link personal task back to team task
+    await updateDoc(doc(db, "personalTasks", taskId), {
+      linkedTeamTaskId: ref.id,
+      linkDirection: "pushed",
+      updatedAt: serverTimestamp(),
+    });
+
+    await logMutation("PERSONAL", `Pushed personal task "${task.task}" to team (${projectId})`, projectId, ref.id);
+  };
+
+  const pullFromTeam = async (teamTaskId: string, teamTask: Task) => {
+    // Create a personal task from the team task
+    const ref = await addDoc(collection(db, "personalTasks"), {
+      task: teamTask.task,
+      status: teamTask.status,
+      priority: teamTask.priority,
+      notes: teamTask.notes,
+      dueDate: teamTask.dueDate,
+      disciplines: teamTask.disciplines,
+      clientId: null,
+      domainId: null,
+      linkedTeamTaskId: teamTaskId,
+      linkDirection: "pulled",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+
+    // Link team task back to personal
+    await updateDoc(doc(db, "tasksMirror", teamTaskId), {
+      linkedPersonalTaskId: ref.id,
+    });
+
+    await logMutation("PERSONAL", `Pulled team task "${teamTask.task}" to personal`, teamTask.projectId, teamTaskId);
+  };
+
+  const unlinkTask = async (taskId: string) => {
+    const task = personalTasks.find(t => t.id === taskId);
+    if (!task?.linkedTeamTaskId) return;
+
+    // Clear link on team task
+    await updateDoc(doc(db, "tasksMirror", task.linkedTeamTaskId), {
+      linkedPersonalTaskId: null,
+    });
+
+    // Clear link on personal task
+    await updateDoc(doc(db, "personalTasks", taskId), {
+      linkedTeamTaskId: null,
+      linkDirection: null,
+      updatedAt: serverTimestamp(),
+    });
+
+    await logMutation("PERSONAL", `Unlinked personal task ${taskId}`, null, taskId);
+  };
+
+  return { personalTasks, addPersonalTask, updatePersonalTask, deletePersonalTask, pushToTeam, pullFromTeam, unlinkTask };
 }
 
 // ─── CMD ────────────────────────────────────────────────────────────────────

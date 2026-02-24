@@ -64,3 +64,4 @@ export const STATUS_CFG: Record<string, { label: string; color: string; bg: stri
 
 // ─── Layout ──────────────────────────────────────────────────────────────
 export const BOARD_GT = "16px 72px 130px 1fr 100px 120px 90px 64px 28px";
+export const PERSONAL_GT = "16px 1fr 120px 90px 100px 64px 28px";
