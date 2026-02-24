@@ -5,7 +5,7 @@ import { onRequest } from "firebase-functions/v2/https";
 import { verifySlackSignature, getSlackClient } from "./client";
 import { collections, serverTimestamp } from "../shared/firestore";
 import { logActivity } from "../shared/logger";
-import { createTask, addTaskComment } from "../clickup/api";
+import { createTask, addTaskComment, moveTaskToList } from "../clickup/api";
 import { sendNudge } from "../intelligence/coaching";
 
 export const slackActions = onRequest(
@@ -88,6 +88,9 @@ async function handleBlockActions(payload: Record<string, unknown>): Promise<voi
     case "hold_digest":
       await rejectSuggestion(suggestionId, payload);
       break;
+    case "send_followup":
+      await handleSendFollowUp(suggestionId, payload);
+      break;
   }
 }
 
@@ -143,6 +146,17 @@ async function approveTask(
       `[Warboard] Task created from Slack message.\nOriginal: "${(sugg.message as string || "").slice(0, 300)}"`,
     );
 
+    // Move to Active Work list
+    try {
+      const clientDoc = await collections.clients().doc(project).get();
+      const folderId = clientDoc.data()?.clickupFolderId as string | null;
+      if (folderId) {
+        await moveTaskToList(clickupTaskId, folderId, "active");
+      }
+    } catch (moveErr) {
+      console.warn(`Failed to move approved task ${clickupTaskId} to Active Work:`, moveErr);
+    }
+
     // Update suggestion status
     await collections.pendingSuggestions().doc(suggestionId).update({
       status: "approved",
@@ -195,10 +209,29 @@ async function rejectSuggestion(
 ): Promise<void> {
   const slack = getSlackClient();
 
+  // Load suggestion to check type before updating
+  const suggDoc = await collections.pendingSuggestions().doc(suggestionId).get();
+  const suggData = suggDoc.data();
+
   await collections.pendingSuggestions().doc(suggestionId).update({
     status: "rejected",
     resolvedAt: serverTimestamp(),
   });
+
+  // Update coaching log if this is a coaching nudge
+  if (suggData?.type === "coaching_nudge" && suggData?.memberId) {
+    const memberId = suggData.memberId as string;
+    const today = new Date().toISOString().slice(0, 10);
+    const logRef = collections.coachingLog(memberId).doc(today);
+    const logDoc = await logRef.get();
+    if (logDoc.exists) {
+      await logRef.update({
+        nudgesRejected: ((logDoc.data()!.nudgesRejected as number) || 0) + 1,
+      });
+    } else {
+      await logRef.set({ nudgesSent: 0, nudgesAccepted: 0, nudgesSnoozed: 0, nudgesRejected: 1, types: [] });
+    }
+  }
 
   // Update the #ai-ops message
   const message = payload.message as Record<string, unknown> | undefined;
@@ -326,6 +359,17 @@ async function handleViewSubmission(payload: Record<string, unknown>): Promise<v
     lastSyncedAt: serverTimestamp(),
   }, { merge: true });
 
+  // Move to Active Work list
+  try {
+    const clientDoc = await collections.clients().doc(project).get();
+    const folderId = clientDoc.data()?.clickupFolderId as string | null;
+    if (folderId) {
+      await moveTaskToList(clickupTaskId, folderId, "active");
+    }
+  } catch (moveErr) {
+    console.warn(`Failed to move edited task ${clickupTaskId} to Active Work:`, moveErr);
+  }
+
   // Update suggestion
   if (suggestionId) {
     await collections.pendingSuggestions().doc(suggestionId).update({
@@ -410,10 +454,29 @@ async function handleSnoozeNudge(
 ): Promise<void> {
   const slack = getSlackClient();
 
+  // Load suggestion to check type
+  const suggDoc = await collections.pendingSuggestions().doc(suggestionId).get();
+  const suggData = suggDoc.data();
+
   await collections.pendingSuggestions().doc(suggestionId).update({
     status: "snoozed",
     resolvedAt: serverTimestamp(),
   });
+
+  // Update coaching log if this is a coaching nudge
+  if (suggData?.type === "coaching_nudge" && suggData?.memberId) {
+    const memberId = suggData.memberId as string;
+    const today = new Date().toISOString().slice(0, 10);
+    const logRef = collections.coachingLog(memberId).doc(today);
+    const logDoc = await logRef.get();
+    if (logDoc.exists) {
+      await logRef.update({
+        nudgesSnoozed: ((logDoc.data()!.nudgesSnoozed as number) || 0) + 1,
+      });
+    } else {
+      await logRef.set({ nudgesSent: 0, nudgesAccepted: 0, nudgesSnoozed: 1, nudgesRejected: 0, types: [] });
+    }
+  }
 
   const message = payload.message as Record<string, unknown> | undefined;
   const channel = (payload.channel as Record<string, string>)?.id;
@@ -479,6 +542,59 @@ async function handleApproveDigest(
   await logActivity({
     action: "SLACK",
     detail: "Daily digest posted to #mngmt-rosenmond",
+    source: "slack",
+  });
+}
+
+async function handleSendFollowUp(
+  suggestionId: string,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  const slack = getSlackClient();
+
+  const doc = await collections.pendingSuggestions().doc(suggestionId).get();
+  if (!doc.exists) return;
+  const data = doc.data()!;
+
+  const taskId = data.taskId as string;
+  const taskName = data.taskName as string;
+  const projectId = data.projectId as string;
+
+  // Post follow-up comment on ClickUp task
+  if (taskId) {
+    await addTaskComment(
+      taskId,
+      `[Warboard] Client follow-up: task has been in "Sent to Client" for 3+ business days. Please follow up.`,
+    );
+  }
+
+  await collections.pendingSuggestions().doc(suggestionId).update({
+    status: "sent",
+    sentAt: serverTimestamp(),
+  });
+
+  // Update Slack message
+  const message = payload.message as Record<string, unknown> | undefined;
+  const channel = (payload.channel as Record<string, string>)?.id;
+  const messageTs = message?.ts as string;
+
+  if (channel && messageTs) {
+    await slack.chat.update({
+      channel,
+      ts: messageTs,
+      text: "Follow-up sent",
+      blocks: [{
+        type: "section",
+        text: { type: "mrkdwn", text: `:white_check_mark: *Follow-up sent for ${taskName}* (${projectId})` },
+      }],
+    });
+  }
+
+  await logActivity({
+    action: "FOLLOWUP",
+    detail: `Follow-up sent for task ${taskId} (${taskName}) — WAITING > 3 business days`,
+    taskId,
+    projectId,
     source: "slack",
   });
 }

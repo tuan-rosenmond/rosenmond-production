@@ -254,6 +254,13 @@ export async function sendNudge(suggestionId: string): Promise<void> {
         text: `:wave: Hey ${memberName}!\n\n${message}`,
       });
     }
+  } else {
+    await logActivity({
+      action: "COACHING",
+      detail: `Nudge DM skipped for ${memberName} (${memberId}) — no slackUserId configured. Use "@ai-pm link ${memberId} @SlackUser" to fix.`,
+      taskId,
+      source: "slack",
+    });
   }
 
   // Post audit comment on ClickUp task
@@ -268,12 +275,15 @@ export async function sendNudge(suggestionId: string): Promise<void> {
     const existing = logDoc.data()!;
     await logRef.update({
       nudgesSent: ((existing.nudgesSent as number) || 0) + 1,
+      nudgesAccepted: ((existing.nudgesAccepted as number) || 0) + 1,
       types: [...((existing.types as string[]) || []), data.nudgeType as string],
     });
   } else {
     await logRef.set({
       nudgesSent: 1,
-      nudgesAccepted: 0,
+      nudgesAccepted: 1,
+      nudgesSnoozed: 0,
+      nudgesRejected: 0,
       types: [data.nudgeType as string],
     });
   }
@@ -290,4 +300,90 @@ export async function sendNudge(suggestionId: string): Promise<void> {
     taskId,
     source: "slack",
   });
+}
+
+/**
+ * Post follow-up nudges for tasks in WAITING > 3 business days.
+ * Called from the daily digest scheduler.
+ */
+export async function postFollowUpNudges(): Promise<number> {
+  const { detectStalledWork } = await import("./stalled");
+  const stalled = await detectStalledWork();
+  const waitingStalled = stalled.filter((t) => t.status === "WAITING");
+
+  if (!waitingStalled.length) return 0;
+
+  const slack = getSlackClient();
+  const today = new Date().toISOString().slice(0, 10);
+  let posted = 0;
+
+  for (const task of waitingStalled) {
+    // Deduplicate: skip if we already posted a follow-up for this task today
+    const existing = await collections.pendingSuggestions()
+      .where("type", "==", "follow_up_nudge")
+      .where("taskId", "==", task.taskId)
+      .limit(1)
+      .get();
+
+    if (!existing.empty) {
+      const existingData = existing.docs[0].data();
+      if ((existingData.date as string) === today) continue;
+    }
+
+    const ref = await collections.pendingSuggestions().add({
+      ts: serverTimestamp(),
+      type: "follow_up_nudge",
+      taskId: task.taskId,
+      taskName: task.taskName,
+      projectId: task.projectId,
+      assignee: task.assignee,
+      reason: task.reason,
+      date: today,
+      status: "pending",
+    });
+
+    await slack.chat.postMessage({
+      channel: AI_OPS_CHANNEL(),
+      text: `Follow-up: ${task.taskName} — ${task.reason}`,
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `:hourglass: *CLIENT FOLLOW-UP*\n*${task.taskName}* · ${task.projectId}\n${task.reason}`,
+          },
+        },
+        {
+          type: "actions",
+          elements: [
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Send Follow-Up" },
+              style: "primary",
+              action_id: "send_followup",
+              value: ref.id,
+            },
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Already Handled" },
+              action_id: "snooze_nudge",
+              value: ref.id,
+            },
+          ],
+        },
+      ],
+    });
+
+    posted++;
+  }
+
+  if (posted > 0) {
+    await logActivity({
+      action: "FOLLOWUP",
+      detail: `Posted ${posted} follow-up nudges for stalled WAITING tasks`,
+      source: "scheduler",
+    });
+  }
+
+  return posted;
 }

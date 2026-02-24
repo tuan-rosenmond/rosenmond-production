@@ -16,7 +16,36 @@ function extractCustomField(task: ClickUpTask, fieldName: string): unknown {
   const field = task.custom_fields?.find(
     (f) => f.name.toLowerCase() === fieldName.toLowerCase(),
   );
-  return field?.value ?? null;
+  if (!field) return null;
+
+  const value = field.value;
+  if (value === null || value === undefined) return null;
+
+  const typeConfig = field.type_config as Record<string, unknown> | undefined;
+
+  // Dropdown: value is option index (number) → resolve via type_config.options
+  if (typeConfig?.options && typeof value === "number") {
+    const options = typeConfig.options as Array<{ name: string; orderindex: number }>;
+    const option = options.find((o) => o.orderindex === value);
+    return option?.name ?? null;
+  }
+
+  // Labels/multi-select: value is array of option IDs → resolve names
+  if (typeConfig?.options && Array.isArray(value)) {
+    const options = typeConfig.options as Array<{ id: string; name: string }>;
+    const names = (value as Array<string | number>)
+      .map((v) => options.find((o) => String(o.id) === String(v))?.name)
+      .filter(Boolean);
+    return names.length === 1 ? names[0] : names.length > 0 ? names : null;
+  }
+
+  // Nested object with its own value property
+  if (typeof value === "object" && value !== null && "value" in (value as Record<string, unknown>)) {
+    return (value as Record<string, unknown>).value;
+  }
+
+  // Primitive — return directly
+  return value;
 }
 
 function normalizeClientId(folderName: string, clientsLookup: Map<string, string>): string | null {
@@ -58,6 +87,9 @@ export const warboardSync = onRequest(
       // Fetch all tasks from ClickUp
       const clickupTasks = await getAllTasks();
 
+      // Track unique projects by folder for Gap 5
+      const projectsMap = new Map<string, { clientId: string; label: string; clickupFolderId: string; clickupListIds: Set<string> }>();
+
       // Map and batch write to tasksMirror (chunk at 500)
       const BATCH_SIZE = 500;
       let synced = 0;
@@ -74,6 +106,18 @@ export const warboardSync = onRequest(
 
           // Resolve folder → projectId
           const projectId = normalizeClientId(task.folder.name, clientsLookup) || task.folder.name.toLowerCase().replace(/\s+/g, "");
+
+          // Track project metadata
+          const projKey = `${projectId}::${task.folder.id}`;
+          if (!projectsMap.has(projKey)) {
+            projectsMap.set(projKey, {
+              clientId: projectId,
+              label: task.folder.name,
+              clickupFolderId: task.folder.id,
+              clickupListIds: new Set<string>(),
+            });
+          }
+          projectsMap.get(projKey)!.clickupListIds.add(task.list.id);
 
           // Extract assignee (first assignee username)
           const assignee = task.assignees?.[0]?.username || null;
@@ -116,15 +160,27 @@ export const warboardSync = onRequest(
         await batch.commit();
       }
 
+      // Write project metadata to projects subcollections
+      for (const [, proj] of projectsMap) {
+        await collections.projects(proj.clientId).doc(proj.clickupFolderId).set({
+          clientId: proj.clientId,
+          label: proj.label,
+          clickupFolderId: proj.clickupFolderId,
+          clickupListIds: Array.from(proj.clickupListIds),
+          lastSyncedAt: serverTimestamp(),
+        }, { merge: true });
+      }
+
       await logActivity({
         action: "CLICKUP",
-        detail: `Warboard sync complete — ${synced} tasks mirrored from ClickUp`,
+        detail: `Warboard sync complete — ${synced} tasks mirrored, ${projectsMap.size} projects updated`,
         source: "warboard",
       });
 
       res.status(200).json({
-        message: `Sync complete — ${synced} tasks mirrored`,
+        message: `Sync complete — ${synced} tasks mirrored, ${projectsMap.size} projects`,
         synced,
+        projects: projectsMap.size,
       });
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);

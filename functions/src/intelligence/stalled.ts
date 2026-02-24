@@ -54,18 +54,27 @@ export async function detectStalledWork(): Promise<StalledTask[]> {
     const projectId = data.projectId as string;
     const assignee = (data.assignee as string) || null;
 
-    // WAITING status > 3 business days
-    if (status === "WAITING" && bizDaysSince > 3) {
-      stalled.push({
-        taskId: doc.id,
-        taskName,
-        projectId,
-        status,
-        assignee,
-        daysSinceUpdate: daysSince,
-        reason: `WAITING for ${bizDaysSince} business days (${daysSince}d total) — follow up with client`,
-      });
-      continue;
+    // WAITING status > 3 business days — prefer sentToClientAt if available
+    if (status === "WAITING") {
+      let waitingStart = lastUpdate;
+      const sentAt = data.sentToClientAt;
+      if (sentAt && typeof (sentAt as { toDate: () => Date }).toDate === "function") {
+        waitingStart = (sentAt as FirebaseFirestore.Timestamp).toDate();
+      }
+      const bizDaysWaiting = businessDaysBetween(waitingStart, now);
+      const daysWaiting = Math.floor((now.getTime() - waitingStart.getTime()) / (1000 * 60 * 60 * 24));
+      if (bizDaysWaiting > 3) {
+        stalled.push({
+          taskId: doc.id,
+          taskName,
+          projectId,
+          status,
+          assignee,
+          daysSinceUpdate: daysWaiting,
+          reason: `WAITING for ${bizDaysWaiting} business days (${daysWaiting}d total) — follow up with client`,
+        });
+        continue;
+      }
     }
 
     // Any non-done task with no update in 5+ calendar days

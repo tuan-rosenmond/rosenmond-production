@@ -19,7 +19,7 @@ export interface ClickUpTask {
   list: { id: string; name: string };
   folder: { id: string; name: string };
   space: { id: string };
-  custom_fields: Array<{ id: string; name: string; value: unknown }>;
+  custom_fields: Array<{ id: string; name: string; value: unknown; type_config?: unknown }>;
   url: string;
 }
 

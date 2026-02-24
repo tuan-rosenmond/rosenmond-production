@@ -1,13 +1,25 @@
 // @ai-pm command handler — routes app_mention commands to appropriate handlers
 // Commands: status, who's overloaded, what's stuck, billing report, create project,
-//           upload scope, mute, show log, checkin
+//           upload scope, mute, unmute, link, show log, checkin
 
 import { getSlackClient, AI_OPS_CHANNEL, TUAN_USER_ID } from "./client";
-import { collections } from "../shared/firestore";
+import { collections, serverTimestamp } from "../shared/firestore";
 import { logActivity } from "../shared/logger";
 import { analyzeCapacity } from "../intelligence/capacity";
 import { detectStalledWork } from "../intelligence/stalled";
 import { detectBillingGaps } from "../intelligence/billing";
+
+// Map user-facing type aliases to actual CoachingNudge.type keys
+const NUDGE_TYPE_MAP: Record<string, string> = {
+  "missing_time": "missing_time",
+  "time-tracking": "missing_time",
+  "time": "missing_time",
+  "stalled_task": "stalled_task",
+  "stalled": "stalled_task",
+  "workflow_skip": "workflow_skip",
+  "workflow": "workflow_skip",
+  "all": "all",
+};
 
 export async function handleAiPmCommand(text: string, channel: string, userId: string): Promise<void> {
   const slack = getSlackClient();
@@ -33,8 +45,12 @@ export async function handleAiPmCommand(text: string, channel: string, userId: s
       channel,
       text: ":construction: `upload scope` — scope ingestion is Phase 2+. Upload scope docs to ClickUp directly for now.",
     });
+  } else if (cmd.startsWith("unmute")) {
+    await handleUnmute(cmd, channel);
   } else if (cmd.startsWith("mute")) {
     await handleMute(cmd, channel, userId);
+  } else if (cmd.startsWith("link")) {
+    await handleLink(cmd, channel);
   } else if (cmd.startsWith("show log")) {
     await handleShowLog(channel);
   } else if (cmd.startsWith("checkin") || cmd.startsWith("check-in")) {
@@ -42,7 +58,7 @@ export async function handleAiPmCommand(text: string, channel: string, userId: s
   } else {
     await slack.chat.postMessage({
       channel,
-      text: ":question: Unknown command. Available:\n`status [client]` · `who's overloaded` · `what's stuck` · `billing report [client]` · `show log` · `checkin` · `mute [type] [person]`",
+      text: ":question: Unknown command. Available:\n`status [client]` · `who's overloaded` · `what's stuck` · `billing report [client]` · `show log` · `checkin` · `mute [type] [person]` · `unmute [type] [person]` · `link [member] @SlackUser`",
     });
   }
 
@@ -196,65 +212,175 @@ async function handleBillingReport(cmd: string, channel: string): Promise<void> 
 
 async function handleMute(cmd: string, channel: string, userId: string): Promise<void> {
   const slack = getSlackClient();
-  // Parse: mute [type] [person] — e.g. "mute time-tracking bhavesh"
   const parts = cmd.replace("mute", "").trim().split(/\s+/);
-  const nudgeType = parts[0] || "";
-  const person = parts[1] || "";
+  const rawType = parts[0] || "";
+  const person = parts.slice(1).join(" ").trim();
+
+  const nudgeType = NUDGE_TYPE_MAP[rawType];
 
   if (!nudgeType || !person) {
     await slack.chat.postMessage({
       channel,
-      text: "Usage: `@ai-pm mute [nudge-type] [person]`\nTypes: `time-tracking`, `stalled`, `workflow`",
+      text: "Usage: `@ai-pm mute [type] [person]`\nTypes: `time` (missing_time), `stalled` (stalled_task), `workflow` (workflow_skip), `all`",
     });
     return;
   }
 
-  // Store mute in coachingLog
-  await collections.coachingLog(person).doc("mutes").set({
-    [nudgeType]: { muted: true, mutedBy: userId, mutedAt: new Date().toISOString() },
-  }, { merge: true });
+  if (nudgeType === "all") {
+    await collections.coachingLog(person).doc("mutes").set({
+      missing_time: { muted: true, mutedBy: userId, mutedAt: new Date().toISOString() },
+      stalled_task: { muted: true, mutedBy: userId, mutedAt: new Date().toISOString() },
+      workflow_skip: { muted: true, mutedBy: userId, mutedAt: new Date().toISOString() },
+    }, { merge: true });
+  } else {
+    await collections.coachingLog(person).doc("mutes").set({
+      [nudgeType]: { muted: true, mutedBy: userId, mutedAt: new Date().toISOString() },
+    }, { merge: true });
+  }
 
+  const label = nudgeType === "all" ? "all" : nudgeType;
   await slack.chat.postMessage({
     channel,
-    text: `:mute: Muted \`${nudgeType}\` nudges for *${person}*.`,
+    text: `:mute: Muted \`${label}\` nudges for *${person}*.`,
+  });
+}
+
+async function handleUnmute(cmd: string, channel: string): Promise<void> {
+  const slack = getSlackClient();
+  const parts = cmd.replace("unmute", "").trim().split(/\s+/);
+  const rawType = parts[0] || "";
+  const person = parts.slice(1).join(" ").trim();
+
+  const nudgeType = NUDGE_TYPE_MAP[rawType];
+
+  if (!nudgeType || !person) {
+    await slack.chat.postMessage({
+      channel,
+      text: "Usage: `@ai-pm unmute [type] [person]`\nTypes: `time`, `stalled`, `workflow`, `all`",
+    });
+    return;
+  }
+
+  if (nudgeType === "all") {
+    await collections.coachingLog(person).doc("mutes").set({
+      missing_time: { muted: false },
+      stalled_task: { muted: false },
+      workflow_skip: { muted: false },
+    }, { merge: true });
+  } else {
+    await collections.coachingLog(person).doc("mutes").set({
+      [nudgeType]: { muted: false },
+    }, { merge: true });
+  }
+
+  const label = nudgeType === "all" ? "all" : nudgeType;
+  await slack.chat.postMessage({
+    channel,
+    text: `:loud_sound: Unmuted \`${label}\` nudges for *${person}*.`,
+  });
+}
+
+async function handleLink(cmd: string, channel: string): Promise<void> {
+  const slack = getSlackClient();
+  // Parse: link [teamMemberId] @SlackUser
+  const parts = cmd.replace("link", "").trim().split(/\s+/);
+  const memberId = parts[0]?.toLowerCase() || "";
+  let slackId = parts.slice(1).join(" ").trim();
+
+  // Extract Slack user ID from mention format <@U123ABC>
+  const mentionMatch = slackId.match(/<@([A-Z0-9]+)>/i);
+  if (mentionMatch) {
+    slackId = mentionMatch[1];
+  }
+
+  if (!memberId || !slackId) {
+    await slack.chat.postMessage({
+      channel,
+      text: "Usage: `@ai-pm link [team-member-id] @SlackUser`\nExample: `@ai-pm link bhavesh @Bhavesh`",
+    });
+    return;
+  }
+
+  // Verify team member exists
+  const teamDoc = await collections.team().doc(memberId).get();
+  if (!teamDoc.exists) {
+    await slack.chat.postMessage({
+      channel,
+      text: `:x: Team member \`${memberId}\` not found. Check the team collection.`,
+    });
+    return;
+  }
+
+  await collections.team().doc(memberId).update({
+    slackUserId: slackId,
+  });
+
+  const memberName = (teamDoc.data()!.name as string) || memberId;
+  await slack.chat.postMessage({
+    channel,
+    text: `:link: Linked *${memberName}* (\`${memberId}\`) → Slack user <@${slackId}>`,
+  });
+
+  await logActivity({
+    action: "TEAM",
+    detail: `Linked team member ${memberId} to Slack user ${slackId}`,
+    source: "slack",
   });
 }
 
 async function handleShowLog(channel: string): Promise<void> {
   const slack = getSlackClient();
 
-  // Fetch recent pendingSuggestions (last 20)
   const snap = await collections.pendingSuggestions()
     .orderBy("ts", "desc")
     .limit(20)
     .get();
 
   if (snap.empty) {
-    await slack.chat.postMessage({ channel, text: ":page_facing_up: No recent classified messages." });
+    await slack.chat.postMessage({ channel, text: ":page_facing_up: No recent activity." });
     return;
   }
 
   const lines = snap.docs.map((d) => {
     const data = d.data();
-    const classification = data.classification as string;
-    const confidence = data.confidence as string;
-    const msg = ((data.message as string) || "").slice(0, 60);
+    const type = data.type as string;
     const status = data.status as string;
-    const icon = classification === "NEW_TASK" ? ":clipboard:"
-      : classification === "STATUS_UPDATE" ? ":arrows_counterclockwise:"
-        : classification === "QUESTION" ? ":question:"
-          : ":speech_balloon:";
-    return `${icon} \`${classification}\` (${confidence}) — "${msg}" [${status}]`;
+    const ts = data.ts;
+    const timeStr = ts && typeof (ts as { toDate: () => Date }).toDate === "function"
+      ? (ts as FirebaseFirestore.Timestamp).toDate().toISOString().slice(0, 16).replace("T", " ")
+      : "";
+
+    const statusIcon = status === "approved" || status === "sent" || status === "approved_edited" ? ":white_check_mark:"
+      : status === "rejected" ? ":x:"
+        : status === "snoozed" ? ":zzz:"
+          : ":hourglass:";
+
+    if (type === "coaching_nudge") {
+      const nudgeType = (data.nudgeType as string) || "nudge";
+      const memberName = (data.memberName as string) || "—";
+      return `${statusIcon} \`NUDGE:${nudgeType}\` ${memberName} — "${((data.message as string) || "").slice(0, 40)}" [${status}] _${timeStr}_`;
+    } else if (type === "daily_digest") {
+      return `${statusIcon} \`DIGEST\` ${data.date || ""} [${status}] _${timeStr}_`;
+    } else if (type === "follow_up_nudge") {
+      const taskName = (data.taskName as string) || "—";
+      return `${statusIcon} \`FOLLOW-UP\` ${taskName} — "${((data.reason as string) || "").slice(0, 40)}" [${status}] _${timeStr}_`;
+    } else {
+      const classification = (data.classification as string) || "—";
+      const confidence = (data.confidence as string) || "";
+      const msg = ((data.message as string) || "").slice(0, 40);
+      const confStr = confidence ? ` (${confidence})` : "";
+      return `${statusIcon} \`${classification}\`${confStr} — "${msg}" [${status}] _${timeStr}_`;
+    }
   }).join("\n");
 
   await slack.chat.postMessage({
     channel,
-    text: "Recent classified messages",
+    text: "Recent activity log",
     blocks: [{
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `:page_facing_up: *Recent Classified Messages*\n\n${lines}`,
+        text: `:page_facing_up: *Recent Activity Log* (last 20)\n\n${lines}`,
       },
     }],
   });

@@ -8,6 +8,7 @@ import { collections, serverTimestamp } from "../shared/firestore";
 import { logActivity } from "../shared/logger";
 import { getSlackClient, AI_OPS_CHANNEL } from "../slack/client";
 import { generateDailyDigest, formatDigestForSlack } from "./digest";
+import { postFollowUpNudges, postCoachingNudges } from "./coaching";
 
 async function runDigest(): Promise<void> {
   await logActivity({
@@ -68,9 +69,15 @@ async function runDigest(): Promise<void> {
     ],
   });
 
+  // Also run coaching nudges and follow-up nudges alongside the digest
+  const [coachingCount, followUpCount] = await Promise.all([
+    postCoachingNudges(),
+    postFollowUpNudges(),
+  ]);
+
   await logActivity({
     action: "DIGEST",
-    detail: `Daily digest posted to #ai-ops (${digest.billing.length} billing flags, ${digest.stalled.length} stalled, ${digest.overdue.length} overdue)`,
+    detail: `Daily digest posted to #ai-ops (${digest.billing.length} billing flags, ${digest.stalled.length} stalled, ${digest.overdue.length} overdue, ${coachingCount} coaching nudges, ${followUpCount} follow-ups)`,
     source: "scheduler",
   });
 }

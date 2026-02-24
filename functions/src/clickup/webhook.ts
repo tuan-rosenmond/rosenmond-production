@@ -93,12 +93,19 @@ export const clickupWebhook = onRequest(
             const newClickUpStatus = String(statusChange.after).toLowerCase();
             const warboardStatus = CLICKUP_TO_WARBOARD[newClickUpStatus] || "OPEN";
 
-            await collections.tasksMirror().doc(task_id).set({
+            const statusUpdate: Record<string, unknown> = {
               clickupTaskId: task_id,
               status: warboardStatus,
               lastWebhookEvent: event,
               lastSyncedAt: serverTimestamp(),
-            }, { merge: true });
+            };
+
+            // Track when task enters WAITING ("sent to client")
+            if (warboardStatus === "WAITING") {
+              statusUpdate.sentToClientAt = serverTimestamp();
+            }
+
+            await collections.tasksMirror().doc(task_id).set(statusUpdate, { merge: true });
 
             await logActivity({
               action: "UPDATE",
