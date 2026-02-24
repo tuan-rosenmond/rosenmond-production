@@ -33,13 +33,6 @@
       ]
     },
     {
-      "collectionGroup": "checkins",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "date", "order": "ASCENDING" }
-      ]
-    },
-    {
       "collectionGroup": "activityLog",
       "queryScope": "COLLECTION",
       "fields": [
