@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { THREAT_COLOR } from "./constants";
+import { THREAT_COLOR, T, SANS, MONO } from "./constants";
 import { useTasks, useClients, useTeam, useDomains, useScans, useActivityLog, useCmd } from "./hooks/useFirestore";
 import { useAuth } from "./hooks/useAuth";
 import type { Task, TeamMember } from "./types";
@@ -83,7 +83,7 @@ export default function App() {
   // Auth states: loading → login screen → dashboard
   if (authState === "loading") {
     return (
-      <div style={{ fontFamily: "'JetBrains Mono',monospace", background: "#0d1117", color: "#5a7a8a", height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, letterSpacing: 3 }}>
+      <div style={{ fontFamily: SANS, background: T.bg, color: T.textSec, height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, letterSpacing: 2 }}>
         AUTHENTICATING...
       </div>
     );
@@ -94,19 +94,18 @@ export default function App() {
   }
 
   return (
-    <div style={{ fontFamily: "'JetBrains Mono','Courier New',monospace", background: "#0d1117", color: "#b8ccd8", height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden", userSelect: "none" }}>
+    <div style={{ fontFamily: SANS, background: T.bg, color: T.text, height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden", userSelect: "none" }}>
       <style>{`
-        .inter{font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif!important;}
-        @keyframes critPulse{0%,100%{box-shadow:0 0 0 1px rgba(255,51,51,0.7),0 0 24px rgba(255,51,51,0.3)}50%{box-shadow:0 0 0 2px rgba(255,51,51,0.95),0 0 42px rgba(255,51,51,0.5)}}
+        @keyframes critPulse{0%,100%{box-shadow:0 0 0 1px rgba(212,92,92,0.5),0 0 18px rgba(212,92,92,0.15)}50%{box-shadow:0 0 0 2px rgba(212,92,92,0.7),0 0 28px rgba(212,92,92,0.25)}}
         @keyframes scan{0%{top:-4%}100%{top:106%}}
         @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
-        @keyframes focusPulse{0%,100%{box-shadow:0 0 0 0 rgba(163,230,53,0.6)}50%{box-shadow:0 0 0 4px rgba(163,230,53,0)}}
+        @keyframes focusPulse{0%,100%{box-shadow:0 0 0 0 rgba(138,191,92,0.4)}50%{box-shadow:0 0 0 4px rgba(138,191,92,0)}}
         @keyframes slideIn{from{transform:translateX(-100%);opacity:0}to{transform:translateX(0);opacity:1}}
         @keyframes modalIn{from{transform:translate(-50%,-52%);opacity:0}to{transform:translate(-50%,-50%);opacity:1}}
-        .cn{cursor:grab;transition:filter 0.15s}.cn:hover{filter:brightness(1.3)}.cn:active{cursor:grabbing}
-        .dh{cursor:pointer;transition:filter 0.2s,transform 0.2s}.dh:hover{filter:brightness(1.35);transform:scale(1.06)}
-        .ir{cursor:pointer;border-radius:3px;transition:background 0.1s}.ir:hover{background:rgba(123,104,238,0.06)!important}
-        ::-webkit-scrollbar{width:3px}::-webkit-scrollbar-thumb{background:rgba(123,104,238,0.25);border-radius:2px}::-webkit-scrollbar-thumb:hover{background:#7B68EE}
+        .cn{cursor:grab;transition:filter 0.15s}.cn:hover{filter:brightness(1.15)}.cn:active{cursor:grabbing}
+        .dh{cursor:pointer;transition:filter 0.2s,transform 0.2s}.dh:hover{filter:brightness(1.15);transform:scale(1.04)}
+        .ir{cursor:pointer;border-radius:6px;transition:background 0.1s}.ir:hover{background:${T.hover}!important}
+        ::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:rgba(168,85,247,0.2);border-radius:2px}::-webkit-scrollbar-thumb:hover{background:${T.accent}}
         input:focus,select:focus,textarea:focus{outline:none}
       `}</style>
 
@@ -140,10 +139,10 @@ export default function App() {
         </div>
 
         {/* Sidebar */}
-        <div style={{ width: 280, borderLeft: "1px solid rgba(123,104,238,0.09)", display: "flex", flexDirection: "column", background: "#0d1117", flexShrink: 0 }}>
-          <div style={{ display: "flex", borderBottom: "1px solid rgba(123,104,238,0.08)", flexShrink: 0 }}>
+        <div style={{ width: 300, borderLeft: `1px solid ${T.border}`, display: "flex", flexDirection: "column", background: T.surface, flexShrink: 0 }}>
+          <div style={{ display: "flex", borderBottom: `1px solid ${T.borderSub}`, flexShrink: 0 }}>
             {([["intel", "\u25C8 INTEL"], ["squad", "\u25C9 SQUAD"], ["log", "\u25F7 LOG"], ["scan", "\u2295 SCAN"], ["cmd", "\u2318 CMD"]] as const).map(([tab, label]) => (
-              <button key={tab} onClick={() => setSideTab(tab)} style={{ flex: 1, padding: "7px 0", fontSize: 8, letterSpacing: 1, fontFamily: "'JetBrains Mono',monospace", background: sideTab === tab ? "rgba(123,104,238,0.1)" : "transparent", border: "none", borderBottom: sideTab === tab ? "1px solid #7B68EE" : "1px solid transparent", color: sideTab === tab ? "#7B68EE" : "#5a7a8a", cursor: "pointer", marginBottom: -1 }}>{label}</button>
+              <button key={tab} onClick={() => setSideTab(tab)} style={{ flex: 1, padding: "10px 0", fontSize: 9, letterSpacing: 1, fontFamily: SANS, fontWeight: 600, background: sideTab === tab ? `${T.accent}14` : "transparent", border: "none", borderBottom: sideTab === tab ? `2px solid ${T.accent}` : "2px solid transparent", color: sideTab === tab ? T.accent : T.textSec, cursor: "pointer", marginBottom: -1 }}>{label}</button>
             ))}
           </div>
 

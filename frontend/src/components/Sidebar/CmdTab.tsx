@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import { T, SERIF, SANS } from "../../constants";
 
 interface ChatMsg {
   role: "user" | "sys";
@@ -11,11 +12,20 @@ interface CmdTabProps {
 }
 
 export default function CmdTab({ loading, sendCmd }: CmdTabProps) {
-  const [chatMsgs, setChatMsgs] = useState<ChatMsg[]>([{ role: "sys", text: "ROSENMOND HQ \u2014 Online." }]);
+  const [chatMsgs, setChatMsgs] = useState<ChatMsg[]>([{ role: "sys", text: "Ready to help. Tell me what needs updating." }]);
   const [cmdInput, setCmdInput] = useState("");
   const chatEnd = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => { chatEnd.current?.scrollIntoView({ behavior: "smooth" }); }, [chatMsgs]);
+
+  // Auto-resize textarea
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "52px";
+      textareaRef.current.style.height = Math.max(52, textareaRef.current.scrollHeight) + "px";
+    }
+  }, [cmdInput]);
 
   const handleSend = async () => {
     if (!cmdInput.trim() || loading) return;
@@ -29,30 +39,79 @@ export default function CmdTab({ loading, sendCmd }: CmdTabProps) {
 
   return (
     <>
-      <div style={{ flexShrink: 0, padding: "7px 8px", borderBottom: "1px solid rgba(123,104,238,0.07)", background: "rgba(123,104,238,0.03)" }}>
-        <div style={{ fontSize: 7, letterSpacing: 1, color: "#7B68EE", marginBottom: 2 }}>{"\u2318"} OPS PROTOCOL</div>
-        <div style={{ fontSize: 9, fontFamily: "'Inter',sans-serif", color: "rgba(255,255,255,0.3)", lineHeight: 1.5 }}>Talk freely. I'll update tasks, statuses, priorities + client threat levels.</div>
+      {/* Header */}
+      <div style={{ flexShrink: 0, padding: "14px 16px", borderBottom: `1px solid ${T.borderSub}`, background: T.surface }}>
+        <div style={{ fontSize: 11, fontFamily: SANS, fontWeight: 600, letterSpacing: 1, color: T.accent, marginBottom: 4 }}>COMMAND</div>
+        <div style={{ fontSize: 14, fontFamily: SERIF, color: T.textSec, lineHeight: 1.6 }}>Talk freely. I'll update tasks, statuses, priorities + client threat levels.</div>
       </div>
-      <div style={{ flex: 1, overflowY: "auto", padding: "8px 8px", display: "flex", flexDirection: "column", gap: 6 }}>
+
+      {/* Chat area */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "16px 16px", display: "flex", flexDirection: "column", gap: 24 }}>
         {chatMsgs.map((msg, i) => (
-          <div key={i} style={{ fontSize: 10, fontFamily: "'Inter',sans-serif", lineHeight: 1.6, color: msg.role === "user" ? "#c8d8e8" : "#5a9abb", borderLeft: `2px solid ${msg.role === "user" ? "rgba(123,104,238,0.55)" : "rgba(123,104,238,0.15)"}`, paddingLeft: 7, whiteSpace: "pre-wrap" }}>
-            <div style={{ fontSize: 6, letterSpacing: 1, color: msg.role === "user" ? "rgba(123,104,238,0.65)" : "#3a6a8a", marginBottom: 2 }}>{msg.role === "user" ? "TUAN" : "HQ"}</div>
+          <div key={i} style={{
+            fontSize: 16,
+            fontFamily: SERIF,
+            lineHeight: 1.75,
+            color: msg.role === "user" ? T.text : T.textSec,
+            background: msg.role === "user" ? T.userBub : "transparent",
+            padding: msg.role === "user" ? "14px 16px" : "0",
+            borderRadius: msg.role === "user" ? 10 : 0,
+            whiteSpace: "pre-wrap",
+          }}>
+            <div style={{ fontSize: 11, fontFamily: SANS, fontWeight: 600, letterSpacing: 1, color: msg.role === "user" ? T.accent : T.textSec, marginBottom: 6, opacity: 0.7 }}>{msg.role === "user" ? "YOU" : "ROSENMOND"}</div>
             {msg.text}
           </div>
         ))}
-        {loading && <div style={{ fontSize: 9, color: "#4a7a9a", borderLeft: "2px solid rgba(123,104,238,0.12)", paddingLeft: 7 }}>
-          <div style={{ fontSize: 6, letterSpacing: 1, color: "#3a6a8a", marginBottom: 2 }}>HQ</div>
-          <span style={{ animation: "blink 0.7s infinite" }}>updating board_</span>
+        {loading && <div style={{ fontSize: 16, fontFamily: SERIF, color: T.textSec, padding: 0 }}>
+          <div style={{ fontSize: 11, fontFamily: SANS, fontWeight: 600, letterSpacing: 1, color: T.textSec, marginBottom: 6, opacity: 0.7 }}>ROSENMOND</div>
+          <span style={{ animation: "blink 0.7s infinite", opacity: 0.5 }}>thinking...</span>
         </div>}
         <div ref={chatEnd} />
       </div>
-      <div style={{ padding: "7px 8px", borderTop: "1px solid rgba(123,104,238,0.08)", flexShrink: 0 }}>
-        <div style={{ display: "flex", gap: 5 }}>
-          <input value={cmdInput} onChange={e => setCmdInput(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSend()} placeholder="speak or type your update..."
-            style={{ flex: 1, background: "rgba(123,104,238,0.05)", border: "1px solid rgba(123,104,238,0.15)", color: "#c8d8e8", padding: "7px 9px", fontSize: 10, fontFamily: "'Inter',sans-serif", borderRadius: 3 }} />
-          <button onClick={handleSend} disabled={loading} style={{ padding: "7px 10px", background: "rgba(123,104,238,0.08)", border: "1px solid rgba(123,104,238,0.2)", color: "#7B68EE", cursor: "pointer", fontSize: 11, borderRadius: 3, fontFamily: "inherit", flexShrink: 0 }}>{"\u25B6"}</button>
+
+      {/* Input */}
+      <div style={{ padding: "12px 16px", borderTop: `1px solid ${T.borderSub}`, flexShrink: 0, background: T.surface }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+          <textarea
+            ref={textareaRef}
+            value={cmdInput}
+            onChange={e => setCmdInput(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+            placeholder="Type your update..."
+            style={{
+              flex: 1,
+              background: T.input,
+              border: `1px solid ${T.borderSub}`,
+              color: T.text,
+              padding: "14px 16px",
+              fontSize: 16,
+              fontFamily: SERIF,
+              lineHeight: 1.75,
+              borderRadius: 10,
+              resize: "none",
+              overflow: "hidden",
+              minHeight: 52,
+              transition: "border-color 0.15s, box-shadow 0.15s",
+            }}
+            onFocus={e => { e.target.style.borderColor = T.cmdAccent; e.target.style.boxShadow = `0 0 0 2px rgba(218,119,86,0.2)`; }}
+            onBlur={e => { e.target.style.borderColor = T.borderSub; e.target.style.boxShadow = "none"; }}
+          />
+          <button onClick={handleSend} disabled={loading} style={{
+            padding: "14px 20px",
+            background: T.cmdAccent,
+            border: "none",
+            color: "#fff",
+            cursor: loading ? "default" : "pointer",
+            fontSize: 15,
+            borderRadius: 10,
+            fontFamily: SANS,
+            fontWeight: 600,
+            flexShrink: 0,
+            opacity: loading ? 0.5 : 1,
+            transition: "opacity 0.15s",
+            minHeight: 52,
+          }}>{"\u25B6"}</button>
         </div>
-        <div style={{ marginTop: 5, fontSize: 7, color: "#2a4a6a", letterSpacing: 1 }}>BOARD UPDATES APPLY LIVE {"\u00B7"} AUTO-SAVED</div>
       </div>
     </>
   );

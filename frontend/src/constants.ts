@@ -1,41 +1,66 @@
-// Re-export from shared constants for frontend use
-// All values are identical to the prototype — do not modify
+// ROSENMOND — Frontend Design System Constants
+// Color palette aligned with Claude interface aesthetics
 
+// ─── Theme Tokens ────────────────────────────────────────────────────────
+export const T = {
+  bg:       "#1a1a1a",
+  surface:  "#222222",
+  input:    "#2f2f2f",
+  userBub:  "#000000",
+  text:     "#ececec",
+  textSec:  "#8a8a8a",
+  accent:   "#a855f7",
+  accent2:  "#6366f1",
+  border:   "rgba(168,85,247,0.12)",
+  borderSub:"rgba(168,85,247,0.07)",
+  hover:    "rgba(168,85,247,0.08)",
+  cmdAccent:"#da7756",
+} as const;
+
+// ─── Fonts ───────────────────────────────────────────────────────────────
+export const SANS = "'Inter',system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif";
+export const MONO = "'JetBrains Mono','Courier New',monospace";
+export const SERIF = "'Source Serif 4','Georgia',serif";
+
+// ─── Disciplines ─────────────────────────────────────────────────────────
 export const DISCIPLINES = ["Design", "Development", "Marketing", "Ops", "Content"] as const;
 
 export const DISC_COLOR: Record<string, string> = {
-  Design: "#f472b6", Development: "#34d399", Marketing: "#f97316",
-  Ops: "#7B68EE", Content: "#a78bfa",
+  Design: "#d4789c", Development: "#5bbf8e", Marketing: "#d48a5c",
+  Ops: "#9381d6", Content: "#9a82cc",
 };
 
+// ─── Priorities ──────────────────────────────────────────────────────────
 export const PRIORITIES = ["FOCUS", "CRITICAL", "HIGH", "NORMAL"] as const;
 
 export const PRI_COLOR: Record<string, string> = {
-  FOCUS: "#a3e635", CRITICAL: "#ef4444", HIGH: "#f59e0b", NORMAL: "#60a5fa",
+  FOCUS: "#8abf5c", CRITICAL: "#d45c5c", HIGH: "#d4a35c", NORMAL: "#5c8fd4",
 };
 
+// ─── Threat Levels ───────────────────────────────────────────────────────
 export const THREAT_COLOR: Record<string, string> = {
-  CRITICAL: "#ef4444", HIGH: "#f59e0b", NORMAL: "#34d399", IN_PROGRESS: "#7B68EE",
+  CRITICAL: "#d45c5c", HIGH: "#d4a35c", NORMAL: "#5bbf8e", IN_PROGRESS: "#9381d6",
 };
 
 export const THREAT_SHADOW: Record<string, string> = {
-  CRITICAL:    "0 0 0 1px rgba(239,68,68,0.7),   0 0 24px rgba(239,68,68,0.3)",
-  HIGH:        "0 0 0 1px rgba(245,158,11,0.5),  0 0 14px rgba(245,158,11,0.18)",
-  NORMAL:      "0 0 0 1px rgba(52,211,153,0.4)",
-  IN_PROGRESS: "0 0 0 1px rgba(123,104,238,0.55),0 0 14px rgba(123,104,238,0.18)",
+  CRITICAL:    "0 0 0 1px rgba(212,92,92,0.5),  0 0 18px rgba(212,92,92,0.15)",
+  HIGH:        "0 0 0 1px rgba(212,163,92,0.4),  0 0 12px rgba(212,163,92,0.1)",
+  NORMAL:      "0 0 0 1px rgba(91,191,142,0.3)",
+  IN_PROGRESS: "0 0 0 1px rgba(147,129,214,0.4), 0 0 12px rgba(147,129,214,0.1)",
 };
 
+// ─── Statuses ────────────────────────────────────────────────────────────
 export const STATUSES = ["OPEN", "IN_PROGRESS", "DELEGATED", "WAITING", "DONE", "PARKED", "BLOCKED"] as const;
 
 export const STATUS_CFG: Record<string, { label: string; color: string; bg: string; border: string }> = {
-  IN_PROGRESS: { label: "IN PROGRESS", color: "#fbbf24", bg: "rgba(251,191,36,0.10)",  border: "rgba(251,191,36,0.25)" },
-  DELEGATED:   { label: "DELEGATED",   color: "#22d3ee", bg: "rgba(34,211,238,0.10)",  border: "rgba(34,211,238,0.25)" },
-  OPEN:        { label: "OPEN",        color: "#60a5fa", bg: "rgba(96,165,250,0.10)",  border: "rgba(96,165,250,0.25)" },
-  WAITING:     { label: "WAITING",     color: "#f472b6", bg: "rgba(244,114,182,0.10)", border: "rgba(244,114,182,0.25)" },
-  DONE:        { label: "DONE",        color: "#34d399", bg: "rgba(52,211,153,0.10)",  border: "rgba(52,211,153,0.25)" },
-  PARKED:      { label: "PARKED",      color: "#9ca3af", bg: "rgba(156,163,175,0.10)", border: "rgba(156,163,175,0.2)" },
-  BLOCKED:     { label: "BLOCKED",     color: "#f87171", bg: "rgba(248,113,113,0.10)", border: "rgba(248,113,113,0.25)" },
+  IN_PROGRESS: { label: "IN PROGRESS", color: "#d4a35c", bg: "rgba(212,163,92,0.10)",  border: "rgba(212,163,92,0.22)" },
+  DELEGATED:   { label: "DELEGATED",   color: "#5cb8bf", bg: "rgba(92,184,191,0.10)",  border: "rgba(92,184,191,0.22)" },
+  OPEN:        { label: "OPEN",        color: "#5c8fd4", bg: "rgba(92,143,212,0.10)",  border: "rgba(92,143,212,0.22)" },
+  WAITING:     { label: "WAITING",     color: "#d4789c", bg: "rgba(212,120,156,0.10)", border: "rgba(212,120,156,0.22)" },
+  DONE:        { label: "DONE",        color: "#5bbf8e", bg: "rgba(91,191,142,0.10)",  border: "rgba(91,191,142,0.22)" },
+  PARKED:      { label: "PARKED",      color: "#8a8a8a", bg: "rgba(138,138,138,0.10)", border: "rgba(138,138,138,0.18)" },
+  BLOCKED:     { label: "BLOCKED",     color: "#d47272", bg: "rgba(212,114,114,0.10)", border: "rgba(212,114,114,0.22)" },
 };
 
+// ─── Layout ──────────────────────────────────────────────────────────────
 export const BOARD_GT = "16px 72px 130px 1fr 100px 120px 90px 64px 28px";
-export const SANS = "system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif";

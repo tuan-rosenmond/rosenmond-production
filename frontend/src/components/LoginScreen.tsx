@@ -1,4 +1,5 @@
 import React from "react";
+import { T, SANS } from "../constants";
 
 interface LoginScreenProps {
   error: string | null;
@@ -8,9 +9,9 @@ interface LoginScreenProps {
 export default function LoginScreen({ error, onLogin }: LoginScreenProps) {
   return (
     <div style={{
-      fontFamily: "'JetBrains Mono','Courier New',monospace",
-      background: "#0d1117",
-      color: "#b8ccd8",
+      fontFamily: SANS,
+      background: T.bg,
+      color: T.text,
       height: "100vh",
       display: "flex",
       alignItems: "center",
@@ -19,74 +20,70 @@ export default function LoginScreen({ error, onLogin }: LoginScreenProps) {
       gap: 24,
       userSelect: "none",
     }}>
-      {/* Grid background */}
+      {/* Subtle grid background */}
       <div style={{
         position: "fixed", inset: 0, zIndex: 0,
         backgroundImage:
-          "radial-gradient(circle at 50% 50%, rgba(123,104,238,0.04) 0%, transparent 70%)," +
-          "linear-gradient(rgba(123,104,238,0.03) 1px, transparent 1px)," +
-          "linear-gradient(90deg, rgba(123,104,238,0.03) 1px, transparent 1px)",
+          `radial-gradient(circle at 50% 50%, ${T.accent}08 0%, transparent 70%),` +
+          `linear-gradient(${T.accent}06 1px, transparent 1px),` +
+          `linear-gradient(90deg, ${T.accent}06 1px, transparent 1px)`,
         backgroundSize: "100% 100%, 40px 40px, 40px 40px",
       }} />
 
       <div style={{ position: "relative", zIndex: 1, textAlign: "center" }}>
-        {/* Logo / Title */}
-        <div style={{ fontSize: 10, letterSpacing: 6, color: "#7B68EE", marginBottom: 8 }}>
+        <div style={{ fontSize: 13, letterSpacing: 6, color: T.accent, marginBottom: 10, fontWeight: 600 }}>
           ROSENMOND
         </div>
-        <div style={{ fontSize: 18, fontWeight: 700, color: "#e2e8f0", letterSpacing: 2, marginBottom: 4 }}>
+        <div style={{ fontSize: 24, fontWeight: 800, color: T.text, letterSpacing: 2, marginBottom: 6 }}>
           WARBOARD
         </div>
-        <div style={{ fontSize: 9, color: "#5a7a8a", letterSpacing: 2, marginBottom: 40 }}>
+        <div style={{ fontSize: 13, color: T.textSec, letterSpacing: 2, marginBottom: 48 }}>
           TACTICAL OPERATIONS CENTER
         </div>
 
-        {/* Login button */}
         <button
           onClick={onLogin}
           style={{
-            background: "rgba(123,104,238,0.12)",
-            border: "1px solid rgba(123,104,238,0.3)",
-            color: "#7B68EE",
-            padding: "10px 28px",
-            fontSize: 11,
+            background: `${T.accent}18`,
+            border: `1px solid ${T.accent}44`,
+            color: T.accent,
+            padding: "14px 32px",
+            fontSize: 13,
             letterSpacing: 2,
-            fontFamily: "'JetBrains Mono',monospace",
+            fontFamily: SANS,
+            fontWeight: 600,
             cursor: "pointer",
-            borderRadius: 2,
+            borderRadius: 6,
             transition: "all 0.2s",
           }}
           onMouseEnter={e => {
-            e.currentTarget.style.background = "rgba(123,104,238,0.2)";
-            e.currentTarget.style.borderColor = "rgba(123,104,238,0.5)";
+            e.currentTarget.style.background = `${T.accent}28`;
+            e.currentTarget.style.borderColor = `${T.accent}66`;
           }}
           onMouseLeave={e => {
-            e.currentTarget.style.background = "rgba(123,104,238,0.12)";
-            e.currentTarget.style.borderColor = "rgba(123,104,238,0.3)";
+            e.currentTarget.style.background = `${T.accent}18`;
+            e.currentTarget.style.borderColor = `${T.accent}44`;
           }}
         >
           AUTHENTICATE WITH GOOGLE
         </button>
 
-        {/* Error display */}
         {error && (
           <div style={{
-            marginTop: 16,
-            padding: "8px 16px",
-            background: "rgba(239,68,68,0.08)",
-            border: "1px solid rgba(239,68,68,0.25)",
-            color: "#ef4444",
-            fontSize: 10,
-            letterSpacing: 1,
-            borderRadius: 2,
-            maxWidth: 300,
+            marginTop: 18,
+            padding: "12px 18px",
+            background: "rgba(212,92,92,0.08)",
+            border: "1px solid rgba(212,92,92,0.25)",
+            color: "#d45c5c",
+            fontSize: 13,
+            borderRadius: 6,
+            maxWidth: 320,
           }}>
             {error}
           </div>
         )}
 
-        {/* Decorative */}
-        <div style={{ marginTop: 48, fontSize: 8, color: "#2a3a4a", letterSpacing: 2 }}>
+        <div style={{ marginTop: 56, fontSize: 11, color: T.textSec, letterSpacing: 2, opacity: 0.5 }}>
           SECURE ACCESS REQUIRED
         </div>
       </div>
