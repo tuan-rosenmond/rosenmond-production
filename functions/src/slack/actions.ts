@@ -5,7 +5,7 @@ import { onRequest } from "firebase-functions/v2/https";
 import { verifySlackSignature, getSlackClient } from "./client";
 import { collections, serverTimestamp } from "../shared/firestore";
 import { logActivity } from "../shared/logger";
-import { createTask, addTaskComment, moveTaskToList } from "../clickup/api";
+import { createTask, addTaskComment, moveTaskToList, updateTaskStatus, updateTaskAssignee } from "../clickup/api";
 import { sendNudge } from "../intelligence/coaching";
 
 export const slackActions = onRequest(
@@ -91,6 +91,9 @@ async function handleBlockActions(payload: Record<string, unknown>): Promise<voi
     case "send_followup":
       await handleSendFollowUp(suggestionId, payload);
       break;
+    case "approve_reassignment":
+      await handleApproveReassignment(suggestionId, payload);
+      break;
   }
 }
 
@@ -109,52 +112,71 @@ async function approveTask(
     const taskTitle = (sugg.taskTitle as string) || (sugg.message as string) || "Untitled task";
     const project = (sugg.taskProject as string) || "operations";
     const priority = (sugg.taskPriority as string) || "normal";
-
-    // Create in ClickUp
-    const clickupTaskId = await createTask(project, {
-      name: taskTitle,
-      status: "new request",
-      priority: priority.toUpperCase(),
-    });
+    const existingMatch = sugg.existingTaskMatch as string | null;
 
     // Resolve billing fields from classification
     const clientBilling = (sugg.clientBilling as string) || null;
     const teamBilling = (sugg.teamBilling as string) || null;
     const billable = clientBilling === "hourly" || teamBilling === "hourly";
 
-    // Mirror to Firestore
-    await collections.tasksMirror().doc(clickupTaskId).set({
-      projectId: project,
-      task: taskTitle,
-      assignee: null,
-      status: "OPEN",
-      priority: priority.toUpperCase(),
-      disciplines: (sugg.taskDisciplines as string[]) || [],
-      notes: `Created from Slack: "${(sugg.message as string || "").slice(0, 200)}"`,
-      dueDate: null,
-      hoursLogged: 0,
-      clientBilling,
-      teamBilling,
-      billable,
-      clickupTaskId,
-      lastSyncedAt: serverTimestamp(),
-    }, { merge: true });
+    let clickupTaskId: string;
 
-    // Post audit comment on ClickUp task
-    await addTaskComment(
-      clickupTaskId,
-      `[Warboard] Task created from Slack message.\nOriginal: "${(sugg.message as string || "").slice(0, 300)}"`,
-    );
+    if (existingMatch) {
+      // Duplicate prevention: update existing task instead of creating a new one
+      clickupTaskId = existingMatch;
+      const statusTo = (sugg.statusUpdateTo as string) || "in progress";
+      await updateTaskStatus(clickupTaskId, statusTo);
 
-    // Move to Active Work list
-    try {
-      const clientDoc = await collections.clients().doc(project).get();
-      const folderId = clientDoc.data()?.clickupFolderId as string | null;
-      if (folderId) {
-        await moveTaskToList(clickupTaskId, folderId, "active");
+      await collections.tasksMirror().doc(clickupTaskId).set({
+        status: statusTo.toUpperCase().replace(/\s+/g, "_"),
+        lastSyncedAt: serverTimestamp(),
+      }, { merge: true });
+
+      await addTaskComment(
+        clickupTaskId,
+        `[Warboard] Status updated from Slack message.\nOriginal: "${(sugg.message as string || "").slice(0, 300)}"`,
+      );
+    } else {
+      // Create new task in ClickUp
+      clickupTaskId = await createTask(project, {
+        name: taskTitle,
+        status: "new request",
+        priority: priority.toUpperCase(),
+      });
+
+      // Mirror to Firestore
+      await collections.tasksMirror().doc(clickupTaskId).set({
+        projectId: project,
+        task: taskTitle,
+        assignee: null,
+        status: "OPEN",
+        priority: priority.toUpperCase(),
+        disciplines: (sugg.taskDisciplines as string[]) || [],
+        notes: `Created from Slack: "${(sugg.message as string || "").slice(0, 200)}"`,
+        dueDate: null,
+        hoursLogged: 0,
+        clientBilling,
+        teamBilling,
+        billable,
+        clickupTaskId,
+        lastSyncedAt: serverTimestamp(),
+      }, { merge: true });
+
+      await addTaskComment(
+        clickupTaskId,
+        `[Warboard] Task created from Slack message.\nOriginal: "${(sugg.message as string || "").slice(0, 300)}"`,
+      );
+
+      // Move to Active Work list
+      try {
+        const clientDoc = await collections.clients().doc(project).get();
+        const folderId = clientDoc.data()?.clickupFolderId as string | null;
+        if (folderId) {
+          await moveTaskToList(clickupTaskId, folderId, "active");
+        }
+      } catch (moveErr) {
+        console.warn(`Failed to move approved task ${clickupTaskId} to Active Work:`, moveErr);
       }
-    } catch (moveErr) {
-      console.warn(`Failed to move approved task ${clickupTaskId} to Active Work:`, moveErr);
     }
 
     // Update suggestion status
@@ -168,18 +190,19 @@ async function approveTask(
     const message = payload.message as Record<string, unknown> | undefined;
     const channel = (payload.channel as Record<string, string>)?.id;
     const messageTs = message?.ts as string;
+    const actionLabel = existingMatch ? "Task Updated" : "Task Created";
 
     if (channel && messageTs) {
       await slack.chat.update({
         channel,
         ts: messageTs,
-        text: `Task created: ${taskTitle}`,
+        text: `${actionLabel}: ${taskTitle}`,
         blocks: [
           {
             type: "section",
             text: {
               type: "mrkdwn",
-              text: `:white_check_mark: *Task Created*\n*${taskTitle}*\nProject: ${project} | ClickUp: ${clickupTaskId}`,
+              text: `:white_check_mark: *${actionLabel}*\n*${taskTitle}*\nProject: ${project} | ClickUp: ${clickupTaskId}`,
             },
           },
         ],
@@ -187,8 +210,8 @@ async function approveTask(
     }
 
     await logActivity({
-      action: "CREATE",
-      detail: `Task "${taskTitle}" created from Slack → ClickUp ${clickupTaskId}`,
+      action: existingMatch ? "UPDATE" : "CREATE",
+      detail: `Task "${taskTitle}" ${existingMatch ? "updated" : "created"} from Slack → ClickUp ${clickupTaskId}`,
       projectId: project,
       taskId: clickupTaskId,
       source: "slack",
@@ -595,6 +618,59 @@ async function handleSendFollowUp(
     detail: `Follow-up sent for task ${taskId} (${taskName}) — WAITING > 3 business days`,
     taskId,
     projectId,
+    source: "slack",
+  });
+}
+
+async function handleApproveReassignment(
+  suggestionId: string,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  const slack = getSlackClient();
+
+  const doc = await collections.pendingSuggestions().doc(suggestionId).get();
+  if (!doc.exists) return;
+  const data = doc.data()!;
+
+  const taskId = data.taskId as string;
+  const taskName = data.taskName as string;
+  const suggestedTo = data.suggestedTo as string;
+
+  // Reassign in ClickUp
+  await updateTaskAssignee(taskId, suggestedTo);
+
+  // Update mirror doc
+  await collections.tasksMirror().doc(taskId).set({
+    assignee: suggestedTo.toLowerCase(),
+    lastSyncedAt: serverTimestamp(),
+  }, { merge: true });
+
+  await collections.pendingSuggestions().doc(suggestionId).update({
+    status: "approved",
+    resolvedAt: serverTimestamp(),
+  });
+
+  // Update Slack message
+  const message = payload.message as Record<string, unknown> | undefined;
+  const channel = (payload.channel as Record<string, string>)?.id;
+  const messageTs = message?.ts as string;
+
+  if (channel && messageTs) {
+    await slack.chat.update({
+      channel,
+      ts: messageTs,
+      text: `Reassigned: ${taskName} → ${suggestedTo}`,
+      blocks: [{
+        type: "section",
+        text: { type: "mrkdwn", text: `:white_check_mark: *Reassigned "${taskName}" → ${suggestedTo}*` },
+      }],
+    });
+  }
+
+  await logActivity({
+    action: "CAPACITY",
+    detail: `Reassigned "${taskName}" (${taskId}) to ${suggestedTo}`,
+    taskId,
     source: "slack",
   });
 }

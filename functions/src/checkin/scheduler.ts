@@ -69,7 +69,7 @@ async function runCheckin(): Promise<void> {
       summary: c.summary,
     })),
     slackChannelId: channelId || null,
-    transcript: message,
+    transcript: [{ role: "system", text: message, ts: new Date().toISOString() }],
   });
 
   await logActivity({

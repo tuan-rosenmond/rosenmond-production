@@ -4,6 +4,7 @@ import { SCAN_SYSTEM_PROMPT } from "../prompts/system";
 import { buildScanContext } from "../pipeline/context";
 import { collections, serverTimestamp } from "../shared/firestore";
 import { logActivity } from "../shared/logger";
+import { CLAUDE_MODEL, CLAUDE_MAX_TOKENS } from "../shared/constants";
 import { buildIntelligenceSnapshot, formatIntelligenceForPrompt } from "../intelligence/scan";
 
 const anthropic = new Anthropic();
@@ -81,8 +82,8 @@ ${intelligenceText}`;
 
       // Claude call — prefill with { to enforce JSON
       const claudeRes = await anthropic.messages.create({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 8096,
+        model: CLAUDE_MODEL,
+        max_tokens: CLAUDE_MAX_TOKENS,
         system: SCAN_SYSTEM_PROMPT,
         messages: [
           { role: "user", content: scanUserMsg },

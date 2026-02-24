@@ -95,9 +95,9 @@ export const slackEvents = onRequest(
           const checkinDoc = checkinSnap.docs[0];
           // Append Tuan's reply to the transcript
           const existing = checkinDoc.data();
-          const transcript = (existing.transcript as string) || "";
+          const transcript = (existing.transcript as Array<{ role: string; text: string; ts: string }>) || [];
           await checkinDoc.ref.update({
-            transcript: transcript + `\n\n[TUAN]: ${text}`,
+            transcript: [...transcript, { role: "user", text, ts: new Date().toISOString() }],
             lastReplyAt: serverTimestamp(),
           });
 
@@ -111,9 +111,10 @@ export const slackEvents = onRequest(
 
             const ctx = await buildCommandContext();
             const systemPrompt = buildCmdSystemPrompt(ctx);
+            const { CLAUDE_MODEL: model, CLAUDE_MAX_TOKENS } = await import("../shared/constants");
             const claudeRes = await anthropic.messages.create({
-              model: "claude-sonnet-4-20250514",
-              max_tokens: 8096,
+              model,
+              max_tokens: CLAUDE_MAX_TOKENS,
               system: systemPrompt,
               messages: [{ role: "user", content: `Check-in response from Tuan: "${text}"` }],
             });

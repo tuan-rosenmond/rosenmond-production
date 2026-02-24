@@ -1,7 +1,9 @@
 // Team capacity analysis — Step 4
 // Per-member load, overloaded flags, reassignment suggestions, unassigned tasks.
 
-import { collections } from "../shared/firestore";
+import { collections, serverTimestamp } from "../shared/firestore";
+import { logActivity } from "../shared/logger";
+import { getSlackClient, AI_OPS_CHANNEL } from "../slack/client";
 
 export interface MemberCapacity {
   memberId: string;
@@ -109,4 +111,73 @@ export async function analyzeCapacity(): Promise<CapacityResult> {
   }
 
   return { members, unassignedTasks, reassignmentSuggestions };
+}
+
+/**
+ * Post reassignment suggestions to #ai-ops for admin review.
+ * Called from the daily digest scheduler.
+ */
+export async function postCapacitySuggestions(): Promise<number> {
+  const { reassignmentSuggestions } = await analyzeCapacity();
+  if (!reassignmentSuggestions.length) return 0;
+
+  const slack = getSlackClient();
+  let posted = 0;
+
+  for (const suggestion of reassignmentSuggestions) {
+    const ref = await collections.pendingSuggestions().add({
+      ts: serverTimestamp(),
+      type: "capacity_reassignment",
+      taskId: suggestion.taskId,
+      taskName: suggestion.taskName,
+      from: suggestion.from,
+      suggestedTo: suggestion.suggestedTo,
+      reason: suggestion.reason,
+      status: "pending",
+    });
+
+    await slack.chat.postMessage({
+      channel: AI_OPS_CHANNEL(),
+      text: `Capacity: Move "${suggestion.taskName}" from ${suggestion.from} → ${suggestion.suggestedTo}`,
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `:scales: *CAPACITY — Reassignment Suggestion*\nMove *"${suggestion.taskName}"* from ${suggestion.from} → ${suggestion.suggestedTo}\n${suggestion.reason}`,
+          },
+        },
+        {
+          type: "actions",
+          elements: [
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Reassign" },
+              style: "primary",
+              action_id: "approve_reassignment",
+              value: ref.id,
+            },
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Dismiss" },
+              action_id: "reject_suggestion",
+              value: ref.id,
+            },
+          ],
+        },
+      ],
+    });
+
+    posted++;
+  }
+
+  if (posted > 0) {
+    await logActivity({
+      action: "CAPACITY",
+      detail: `Posted ${posted} reassignment suggestions to #ai-ops`,
+      source: "scheduler",
+    });
+  }
+
+  return posted;
 }

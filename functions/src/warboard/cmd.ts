@@ -4,6 +4,7 @@ import { buildCmdSystemPrompt } from "../prompts/system";
 import { buildCommandContext } from "../pipeline/context";
 import { executeCmdResponse, CmdResponse } from "../pipeline/execute";
 import { logActivity } from "../shared/logger";
+import { CLAUDE_MODEL, CLAUDE_MAX_TOKENS } from "../shared/constants";
 
 const anthropic = new Anthropic();
 
@@ -35,8 +36,8 @@ export const warboardCmd = onRequest(
       // 3. Send to Claude
       const systemPrompt = buildCmdSystemPrompt(ctx);
       const claudeRes = await anthropic.messages.create({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 8096,
+        model: CLAUDE_MODEL,
+        max_tokens: CLAUDE_MAX_TOKENS,
         system: systemPrompt,
         messages: [{ role: "user", content: message }],
       });

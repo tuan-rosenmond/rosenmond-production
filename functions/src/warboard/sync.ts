@@ -102,10 +102,33 @@ export const warboardSync = onRequest(
           const clickupStatus = task.status.status.toLowerCase();
           const warboardStatus = CLICKUP_TO_WARBOARD[clickupStatus] || "OPEN";
           const clickupPri = task.priority?.priority || "3";
-          const warboardPri = CLICKUP_PRI_TO_WARBOARD[clickupPri] || "NORMAL";
+          let warboardPri = CLICKUP_PRI_TO_WARBOARD[clickupPri] || "NORMAL";
 
-          // Resolve folder → projectId
-          const projectId = normalizeClientId(task.folder.name, clientsLookup) || task.folder.name.toLowerCase().replace(/\s+/g, "");
+          // Preserve FOCUS priority: if mirror doc already has FOCUS and ClickUp priority is 1 (Urgent),
+          // keep FOCUS instead of overwriting with CRITICAL
+          if (clickupPri === "1") {
+            const existingDoc = await collections.tasksMirror().doc(task.id).get();
+            if (existingDoc.exists && existingDoc.data()?.priority === "FOCUS") {
+              warboardPri = "FOCUS";
+            }
+          }
+
+          // Resolve folder → projectId, then check "Project" custom field override
+          const folderProjectId = normalizeClientId(task.folder.name, clientsLookup) || task.folder.name.toLowerCase().replace(/\s+/g, "");
+          const projectField = extractCustomField(task, "project") as string | null;
+          let projectId = folderProjectId;
+          if (projectField) {
+            const resolved = normalizeClientId(projectField, clientsLookup);
+            if (resolved) projectId = resolved;
+          }
+
+          // Extract assignee (first assignee username)
+          const assignee = task.assignees?.[0]?.username || null;
+
+          // Extract disciplines from tags
+          const disciplines = task.tags
+            ?.map((t) => t.name)
+            .filter((n) => ["Design", "Development", "Marketing", "Ops", "Content"].includes(n)) || [];
 
           // Track project metadata
           const projKey = `${projectId}::${task.folder.id}`;
@@ -119,17 +142,9 @@ export const warboardSync = onRequest(
           }
           projectsMap.get(projKey)!.clickupListIds.add(task.list.id);
 
-          // Extract assignee (first assignee username)
-          const assignee = task.assignees?.[0]?.username || null;
-
-          // Extract disciplines from tags
-          const disciplines = task.tags
-            ?.map((t) => t.name)
-            .filter((n) => ["Design", "Development", "Marketing", "Ops", "Content"].includes(n)) || [];
-
-          // Extract billing info from custom fields
-          const clientBilling = extractCustomField(task, "client billing") as string | null;
-          const teamBilling = extractCustomField(task, "team billing") as string | null;
+          // Extract billing info from custom fields (normalize to lowercase)
+          const clientBilling = (extractCustomField(task, "client billing") as string | null)?.toLowerCase() || null;
+          const teamBilling = (extractCustomField(task, "team billing") as string | null)?.toLowerCase() || null;
           const billable = extractCustomField(task, "billable") as boolean | null;
 
           const mirrorDoc = {

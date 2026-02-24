@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { CLASSIFY_SYSTEM_PROMPT } from "../prompts/system";
+import { CLAUDE_MODEL } from "../shared/constants";
 
 const anthropic = new Anthropic();
 
@@ -34,7 +35,7 @@ export async function classifyMessage(
   ].filter(Boolean).join("\n");
 
   const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-20250514",
+    model: CLAUDE_MODEL,
     max_tokens: 512,
     system: CLASSIFY_SYSTEM_PROMPT,
     messages: [{ role: "user", content: userContent }],

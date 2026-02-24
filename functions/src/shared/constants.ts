@@ -84,6 +84,10 @@ export const WARBOARD_TO_CLIENT_BOARD: Record<WarboardStatus, string> = {
   BLOCKED:     "In Progress",
 };
 
+// AI model configuration — single source of truth
+export const CLAUDE_MODEL = "claude-sonnet-4-20250514";
+export const CLAUDE_MAX_TOKENS = 8096;
+
 export const CLIENTS = [
   "noouri", "iraye", "praxis", "formetta", "hsg", "pureclinic",
   "drnoel", "drliv", "browtech", "yuuth", "sevensprings", "tcmd",
