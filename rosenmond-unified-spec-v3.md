@@ -476,22 +476,6 @@ Warboard-owned state. Threat level and map position don't exist in ClickUp.
 }
 ```
 
-### `/slackArchive/{ts}`
-Permanent message archive — workaround for Slack free plan 90-day message limit. Every incoming Slack message is persisted here in real-time by the events listener.
-```typescript
-{
-  channelId: string,
-  channelName: string,
-  userId: string,
-  userName: string,
-  text: string,
-  ts: string,           // Slack timestamp — unique message ID
-  threadTs: string | null,
-  files: Array<{ name: string, url: string, mimetype: string }>,
-  savedAt: Timestamp
-}
-```
-
 ---
 
 ## Shared Constants
@@ -882,9 +866,11 @@ Missing time entries, skipped workflow steps, stalled tasks, capacity imbalances
 
 ---
 
-## The Warboard Frontend
+## The Command Center Frontend
 
-The Warboard v7 prototype (`rosenmond-warboard-v7.jsx`) is the complete visual and UX specification. **Rebuild pixel-for-pixel. Do not redesign anything.**
+Previously called "Warboard". All UI display text uses "Command Center". Firebase function names (`warboardCmd`, `warboardScan`, `warboardSync`), Firestore collections, and API endpoint paths are unchanged.
+
+The Warboard v7 prototype (`rosenmond-warboard-v7.jsx`) defines the layout and component structure. The design system below overrides all visual styling.
 
 ### What changes
 
@@ -895,10 +881,46 @@ The Warboard v7 prototype (`rosenmond-warboard-v7.jsx`) is the complete visual a
 | Hardcoded seed data | Firestore + ClickUp mirror |
 | Single JSX file | Component-based React app |
 | No auth | Firebase Auth, Google Sign-In, Tuan only |
+| War-game neon aesthetic | Claude-inspired design system (see below) |
+
+### Design System
+
+Matches Claude's actual interface — dark greys, not pure black. Built for extended daily use.
+
+```
+Background:        #1a1a1a
+Surface/panels:    #222222
+Input fields:      #2f2f2f
+User msg bubbles:  #000000
+Text primary:      #ececec
+Text secondary:    #8a8a8a
+Primary accent:    #a855f7  (purple)
+Secondary accent:  #6366f1  (indigo)
+Font:              Inter (Google Fonts) — min 13px labels, 15px body, 18px+ headings
+Border radius:     10px cards, 6px buttons
+Spacing:           generous — all padding ~30% more than prototype
+Effects:           no neon/glow — subtle purple tints only
+Status colors:     keep functional meaning, desaturated to fit palette
+```
+
+### CMD Tab — Claude Chat Interface
+
+CMD tab matches Claude's chat interface feel exactly.
+
+```
+Font:              Source Serif 4 (Google Fonts)
+Font size:         16px, line-height 1.75
+Message spacing:   24px between messages
+Input box:         min-height 52px, expands with content
+Input focus:       glows #da7756 (warm coral-red)
+Accent color:      #da7756
+Send button:       #da7756 fill
+Feel:              calm, readable chat — not a terminal
+```
 
 ### What stays identical
 
-Every color, layout, animation, interaction. Every component. The design is final.
+Layout, component structure, functionality, animations, interactions. Only styling changes.
 
 ### Real-time Listeners
 
@@ -1103,7 +1125,6 @@ GMAIL_CLIENT_SECRET=...
 - #ai-ops approval messages with buttons
 - `/task` slash command
 - Passive channel monitoring for mapped channels
-- Persist all incoming Slack messages to `/slackArchive` collection (permanent backup — workaround for Slack free plan 90-day message limit)
 
 **Milestone: Work stops disappearing. Team input is captured.**
 
